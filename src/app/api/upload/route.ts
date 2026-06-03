@@ -30,8 +30,9 @@ export async function POST(req: NextRequest) {
 
     if (docError) throw docError
 
-    // Embed each chunk and save
-    for (const chunk of chunks) {
+    // Embed each chunk and save with chunk_index
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i]
       const embedding = await embedText(chunk)
       const { error: chunkError } = await supabaseAdmin
         .from('chunks')
@@ -39,6 +40,7 @@ export async function POST(req: NextRequest) {
           document_id: doc.id,
           content: chunk,
           embedding: embedding,
+          chunk_index: i,
         })
       if (chunkError) throw chunkError
     }
