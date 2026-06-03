@@ -1,29 +1,30 @@
-import { pipeline } from '@xenova/transformers'
-
-let embedder: any = null
-
-async function getEmbedder() {
-  if (!embedder) {
-    embedder = await pipeline(
-      'feature-extraction',
-      'Xenova/all-MiniLM-L6-v2'
-    )
-  }
-  return embedder
-}
-
 export async function embedText(text: string): Promise<number[]> {
-  const embed = await getEmbedder()
-  const output = await embed(text, { pooling: 'mean', normalize: true })
-  return Array.from(output.data) as number[]
+  const response = await fetch('https://api.groq.com/openai/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'nomic-embed-text-v1_5',
+      input: text,
+    }),
+  })
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(`Embedding failed: ${data.error?.message || 'Unknown error'}`)
+  }
+
+  return data.data[0].embedding
 }
 
 export async function embedBatch(texts: string[]): Promise<number[][]> {
-  const embed = await getEmbedder()
-  const results: number[][] = []
+  const embeddings: number[][] = []
   for (const text of texts) {
-    const output = await embed(text, { pooling: 'mean', normalize: true })
-    results.push(Array.from(output.data) as number[])
+    const embedding = await embedText(text)
+    embeddings.push(embedding)
   }
-  return results
+  return embeddings
 }
