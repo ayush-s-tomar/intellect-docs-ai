@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { embedText } from '@/lib/embeddings'
 import Groq from 'groq-sdk'
 
-// Force it to use your key directly if your .env file is being stubborn
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
 export async function POST(req: NextRequest) {
@@ -11,30 +9,48 @@ export async function POST(req: NextRequest) {
     const { messages, selectedDocIds } = await req.json()
     const userQuery = messages[messages.length - 1].content
 
-    const queryEmbedding = await embedText(userQuery)
+    // Use text search instead of vector search
+    let query = supabaseAdmin
+      .from('chunks')
+      .select('content, document_id')
+      .limit(5)
 
-    const { data: chunks, error: rpcError } = await supabaseAdmin.rpc('match_chunks', {
-      query_embedding: queryEmbedding,
-      match_threshold: 0.0, 
-      match_count: 5,
-      filter_doc_ids: selectedDocIds?.length ? selectedDocIds : null,
-    })
-
-    if (rpcError) {
-      console.error("❌ RPC match_chunks Error:", rpcError)
+    if (selectedDocIds?.length) {
+      query = query.in('document_id', selectedDocIds)
     }
 
-    const context = chunks?.map((c: any) => c.content).join('\n\n') || 'No context found.'
-    const sources = chunks || []
+    // Search for relevant chunks using text matching
+    const { data: chunks, error } = await supabaseAdmin
+      .from('chunks')
+      .select('content, document_id')
+      .in('document_id', selectedDocIds?.length ? selectedDocIds : [''])
+      .textSearch('content', userQuery.split(' ').slice(0, 3).join(' | '), {
+        type: 'websearch',
+        config: 'english'
+      })
+      .limit(5)
 
-    // Cleaned up prompt structure for Llama 3
+    // Fallback: if text search returns nothing, just get first 5 chunks
+    let finalChunks = chunks
+    if (!chunks || chunks.length === 0) {
+      const { data: fallback } = await supabaseAdmin
+        .from('chunks')
+        .select('content, document_id')
+        .in('document_id', selectedDocIds?.length ? selectedDocIds : [''])
+        .limit(5)
+      finalChunks = fallback
+    }
+
+    const context = finalChunks?.map((c: any) => c.content).join('\n\n') || 'No context found.'
+    const sources = finalChunks || []
+
     const fullMessages = [
-      { 
-        role: 'system', 
-        content: `You are a helpful assistant. Answer the user's question using ONLY the following text context. 
-        
+      {
+        role: 'system',
+        content: `You are a helpful assistant. Answer the user's question using ONLY the following context from their uploaded document. Always mention where in the document you found the answer.
+
 CONTEXT:
-${context}` 
+${context}`
       },
       {
         role: 'user',
@@ -65,8 +81,9 @@ ${context}`
     return new NextResponse(readable, {
       headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
     })
+
   } catch (err: any) {
-    console.error("❌ CHAT ROUTE ERROR:", err)
+    console.error('❌ CHAT ERROR:', err)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
