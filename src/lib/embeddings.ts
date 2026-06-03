@@ -1,23 +1,24 @@
 export async function embedText(text: string): Promise<number[]> {
-  const response = await fetch('https://api.groq.com/openai/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'nomic-embed-text-v1_5',
-      input: text,
-    }),
-  })
+  const response = await fetch(
+    'https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2',
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ inputs: text }),
+    }
+  )
 
   const data = await response.json()
 
   if (!response.ok) {
-    throw new Error(`Embedding failed: ${data.error?.message || 'Unknown error'}`)
+    throw new Error(`Embedding failed: ${JSON.stringify(data)}`)
   }
 
-  return data.data[0].embedding
+  // HuggingFace returns nested array for single input
+  return Array.isArray(data[0]) ? data[0] : data
 }
 
 export async function embedBatch(texts: string[]): Promise<number[][]> {
