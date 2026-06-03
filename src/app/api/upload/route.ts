@@ -11,17 +11,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 })
     }
 
-    // Read file content as text
+    // Read file as text
     const text = await file.text()
 
-    // Split into chunks of ~500 characters
+    // Split into chunks of 500 characters
     const chunkSize = 500
     const chunks = []
     for (let i = 0; i < text.length; i += chunkSize) {
       chunks.push(text.slice(i, i + chunkSize))
     }
 
-    // Save document to Supabase
+    // Save document record to Supabase
     const { data: doc, error: docError } = await supabaseAdmin
       .from('documents')
       .insert({ name: file.name })
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
 
     if (docError) throw docError
 
-    // Embed each chunk and save to Supabase
+    // Embed each chunk and save
     for (const chunk of chunks) {
       const embedding = await embedText(chunk)
       const { error: chunkError } = await supabaseAdmin
@@ -43,10 +43,10 @@ export async function POST(req: NextRequest) {
       if (chunkError) throw chunkError
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       document: doc,
-      chunksCreated: chunks.length 
+      chunksCreated: chunks.length,
     })
 
   } catch (err: any) {
