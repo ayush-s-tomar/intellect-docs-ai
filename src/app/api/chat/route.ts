@@ -4,7 +4,7 @@ import { embedText } from '@/lib/embeddings'
 import Groq from 'groq-sdk'
 
 // Force it to use your key directly if your .env file is being stubborn
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || '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' })
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
 export async function POST(req: NextRequest) {
   try {
