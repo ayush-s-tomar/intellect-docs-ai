@@ -12,7 +12,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Read file as text
-    const text = await file.text()
+    let text = ''
+   if (file.type === 'application/pdf') {
+  const buffer = Buffer.from(await file.arrayBuffer())
+  const pdfParse = require('pdf-parse')
+  const parsed = await pdfParse(buffer)
+  text = parsed.text
+} else {
+  text = await file.text()
+}
 
     // Split into chunks of 500 characters
     const chunkSize = 500
