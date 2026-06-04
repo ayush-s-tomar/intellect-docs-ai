@@ -24,17 +24,16 @@ export default function Home() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<string>('')
   const [documents, setDocuments] = useState<Document[]>([])
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
   const [expandedSource, setExpandedSource] = useState<number | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Fetch documents on load
   useEffect(() => {
     fetchDocuments()
   }, [])
 
-  // Auto scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -49,19 +48,61 @@ export default function Home() {
     }
   }
 
+  const extractPdfText = async (file: File): Promise<string> => {
+    const pdfjsLib = await import('pdfjs-dist')
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`
+
+    const arrayBuffer = await file.arrayBuffer()
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    let fullText = ''
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      setUploadProgress(`Reading page ${i} of ${pdf.numPages}...`)
+      const page = await pdf.getPage(i)
+      const content = await page.getTextContent()
+      const pageText = content.items.map((item: any) => item.str).join(' ')
+      fullText += pageText + '\n'
+    }
+
+    return fullText
+  }
+
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     setUploading(true)
-    const formData = new FormData()
-    formData.append('file', file)
+    setUploadProgress('Preparing...')
 
     try {
+      let uploadFile = file
+
+      if (file.type === 'application/pdf') {
+        setUploadProgress('Extracting text from PDF...')
+        const textContent = await extractPdfText(file)
+
+        if (!textContent.trim()) {
+          alert('Could not extract text from this PDF. It may be a scanned image PDF.')
+          return
+        }
+
+        uploadFile = new File(
+          [textContent],
+          file.name.replace('.pdf', '.txt'),
+          { type: 'text/plain' }
+        )
+      }
+
+      setUploadProgress('Uploading...')
+      const formData = new FormData()
+      formData.append('file', uploadFile)
+
       const res = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       })
+
       const data = await res.json()
       if (data.success) {
         await fetchDocuments()
@@ -70,9 +111,11 @@ export default function Home() {
         alert('Upload failed: ' + data.error)
       }
     } catch (err) {
+      console.error(err)
       alert('Upload failed. Please try again.')
     } finally {
       setUploading(false)
+      setUploadProgress('')
       e.target.value = ''
     }
   }
@@ -155,12 +198,18 @@ export default function Home() {
     }
   }
 
+  const getFileIcon = (name: string) => {
+    if (name.endsWith('.pdf') || name.endsWith('.txt')) return '📄'
+    if (name.endsWith('.md')) return '📝'
+    return '📃'
+  }
+
   return (
     <div className="flex h-screen bg-[#0a0a0f] text-slate-100 font-mono overflow-hidden">
 
       {/* Sidebar */}
       <aside className="w-72 bg-[#0d0d14] border-r border-slate-800/40 flex flex-col">
-        
+
         {/* Logo */}
         <div className="p-5 border-b border-slate-800/40">
           <div className="flex items-center gap-2">
@@ -178,10 +227,17 @@ export default function Home() {
               : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'
           }`}>
             {uploading ? (
-              <>
-                <span className="w-3 h-3 border border-slate-500 border-t-transparent rounded-full animate-spin" />
-                Uploading...
-              </>
+              <div className="flex flex-col items-center gap-1 py-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="w-3 h-3 border border-slate-500 border-t-transparent rounded-full animate-spin" />
+                  <span>Processing...</span>
+                </div>
+                {uploadProgress && (
+                  <span className="text-[9px] text-slate-600 tracking-wider normal-case">
+                    {uploadProgress}
+                  </span>
+                )}
+              </div>
             ) : (
               <>
                 <span className="text-base leading-none">+</span>
@@ -196,6 +252,13 @@ export default function Home() {
               onChange={handleUpload}
             />
           </label>
+
+          {/* Supported formats hint */}
+          {!uploading && (
+            <p className="text-[9px] text-slate-700 text-center mt-2 tracking-wider">
+              TXT · PDF · MD supported
+            </p>
+          )}
         </div>
 
         {/* Document List */}
@@ -236,7 +299,7 @@ export default function Home() {
 
               {/* Name */}
               <span className="text-xs text-slate-300 truncate flex-1 group-hover:text-white transition-colors">
-                {doc.name}
+                {getFileIcon(doc.name)} {doc.name}
               </span>
 
               {/* Delete */}
