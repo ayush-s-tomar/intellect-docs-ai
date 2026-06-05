@@ -6,9 +6,15 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File
+    const sessionId = formData.get('session_id') as string  // 👈 NEW LINE
 
     if (!file) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 })
+    }
+
+    // 👇 NEW: reject if no session ID
+    if (!sessionId) {
+      return NextResponse.json({ error: 'No session ID provided' }, { status: 400 })
     }
 
     // Block PDF files
@@ -31,7 +37,10 @@ export async function POST(req: NextRequest) {
     // Save document record to Supabase
     const { data: doc, error: docError } = await supabaseAdmin
       .from('documents')
-      .insert({ name: file.name })
+      .insert({ 
+        name: file.name,
+        session_id: sessionId,   // 👈 NEW: attach session to document
+      })
       .select()
       .single()
 
@@ -48,6 +57,7 @@ export async function POST(req: NextRequest) {
           content: chunk,
           embedding: embedding,
           chunk_index: i,
+          session_id: sessionId,   // 👈 NEW: attach session to each chunk
         })
       if (chunkError) throw chunkError
     }

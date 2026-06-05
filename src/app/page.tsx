@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useSessionId } from '@/hooks/useSessionId'  // 👈 NEW IMPORT
 
 interface Message {
   role: 'user' | 'assistant'
@@ -15,6 +16,8 @@ interface Document {
 }
 
 export default function Home() {
+  const sessionId = useSessionId()  // 👈 NEW: get or create session ID
+
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
@@ -31,8 +34,9 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    if (!sessionId) return  // 👈 NEW: wait until session is ready
     fetchDocuments()
-  }, [])
+  }, [sessionId])  // 👈 NEW: re-fetch when session is ready
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -40,7 +44,7 @@ export default function Home() {
 
   const fetchDocuments = async () => {
     try {
-      const res = await fetch('/api/documents')
+      const res = await fetch(`/api/documents?session_id=${sessionId}`)  // 👈 NEW: pass session
       const data = await res.json()
       setDocuments(data)
     } catch (err) {
@@ -97,6 +101,7 @@ export default function Home() {
       setUploadProgress('Uploading...')
       const formData = new FormData()
       formData.append('file', uploadFile)
+      formData.append('session_id', sessionId)  // 👈 NEW: send session with upload
 
       const res = await fetch('/api/upload', {
         method: 'POST',
@@ -122,7 +127,7 @@ export default function Home() {
 
   const handleDeleteDocument = async (id: string) => {
     try {
-      await fetch('/api/documents', {
+      await fetch(`/api/documents?session_id=${sessionId}`, {  // 👈 NEW: pass session
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
@@ -160,6 +165,7 @@ export default function Home() {
         body: JSON.stringify({
           messages: [...messages, userMsg],
           selectedDocIds,
+          session_id: sessionId,  // 👈 NEW: send session with chat
         }),
       })
 
@@ -253,7 +259,6 @@ export default function Home() {
             />
           </label>
 
-          {/* Supported formats hint */}
           {!uploading && (
             <p className="text-[9px] text-slate-700 text-center mt-2 tracking-wider">
               TXT · PDF · MD supported
@@ -284,7 +289,6 @@ export default function Home() {
               }`}
               onClick={() => toggleDocSelection(doc.id)}
             >
-              {/* Checkbox */}
               <div className={`w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition-all ${
                 selectedDocIds.includes(doc.id)
                   ? 'bg-emerald-500 border-emerald-500'
@@ -297,12 +301,10 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Name */}
               <span className="text-xs text-slate-300 truncate flex-1 group-hover:text-white transition-colors">
                 {getFileIcon(doc.name)} {doc.name}
               </span>
 
-              {/* Delete */}
               <button
                 onClick={e => { e.stopPropagation(); handleDeleteDocument(doc.id) }}
                 className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all text-xs leading-none"
@@ -346,14 +348,12 @@ export default function Home() {
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-2xl w-full ${msg.role === 'user' ? 'flex justify-end' : ''}`}>
 
-                {/* Label */}
                 <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${
                   msg.role === 'user' ? 'text-right text-slate-600' : 'text-slate-600'
                 }`}>
                   {msg.role === 'user' ? 'You' : 'AskMyDocs'}
                 </p>
 
-                {/* Bubble */}
                 <div className={`px-5 py-4 rounded-xl text-sm leading-relaxed ${
                   msg.role === 'user'
                     ? 'bg-slate-800 border border-slate-700/50 text-slate-200 inline-block'
@@ -361,7 +361,6 @@ export default function Home() {
                 }`}>
                   <p className="whitespace-pre-wrap">{msg.content}</p>
 
-                  {/* Sources */}
                   {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-slate-800/60 space-y-2">
                       <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-2">
@@ -397,7 +396,6 @@ export default function Home() {
             </div>
           ))}
 
-          {/* Loading indicator */}
           {loading && (
             <div className="flex justify-start">
               <div className="bg-[#0d0d14] border border-slate-800/60 rounded-xl px-5 py-4">

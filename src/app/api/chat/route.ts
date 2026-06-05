@@ -6,24 +6,15 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, selectedDocIds } = await req.json()
+    const { messages, selectedDocIds, session_id } = await req.json()  // 👈 NEW: session_id
     const userQuery = messages[messages.length - 1].content
 
-    // Use text search instead of vector search
-    let query = supabaseAdmin
-      .from('chunks')
-      .select('content, document_id')
-      .limit(5)
-
-    if (selectedDocIds?.length) {
-      query = query.in('document_id', selectedDocIds)
-    }
-
     // Search for relevant chunks using text matching
-    const { data: chunks, error } = await supabaseAdmin
+    const { data: chunks } = await supabaseAdmin
       .from('chunks')
       .select('content, document_id')
       .in('document_id', selectedDocIds?.length ? selectedDocIds : [''])
+      .eq('session_id', session_id)   // 👈 NEW: only search this user's chunks
       .textSearch('content', userQuery.split(' ').slice(0, 3).join(' | '), {
         type: 'websearch',
         config: 'english'
@@ -37,6 +28,7 @@ export async function POST(req: NextRequest) {
         .from('chunks')
         .select('content, document_id')
         .in('document_id', selectedDocIds?.length ? selectedDocIds : [''])
+        .eq('session_id', session_id)   // 👈 NEW: fallback also scoped to session
         .limit(5)
       finalChunks = fallback
     }
