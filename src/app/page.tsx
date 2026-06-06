@@ -13,8 +13,8 @@ interface Document {
   id: string
   name: string
   created_at: string
-  word_count?: number    // 👈 NEW
-  chunk_count?: number   // 👈 NEW
+  word_count?: number
+  chunk_count?: number
 }
 
 export default function Home() {
@@ -33,7 +33,7 @@ export default function Home() {
   const [documents, setDocuments] = useState<Document[]>([])
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
   const [expandedSource, setExpandedSource] = useState<number | null>(null)
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null)  // 👈 NEW
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -79,6 +79,13 @@ export default function Home() {
     const file = e.target.files?.[0]
     if (!file) return
 
+    // 👇 NEW: block files over 5MB before doing anything
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File too large. Please upload a file under 5MB.\n\nTip: For large documents, split them into smaller parts.')
+      e.target.value = ''
+      return
+    }
+
     setUploading(true)
     setUploadProgress('Preparing...')
 
@@ -115,7 +122,6 @@ export default function Home() {
       if (data.success) {
         await fetchDocuments()
         setSelectedDocIds(prev => [...prev, data.document.id])
-        // 👇 NEW: save word + chunk count into state
         setDocuments(prev => prev.map(d =>
           d.id === data.document.id
             ? { ...d, word_count: data.wordCount, chunk_count: data.chunksCreated }
@@ -132,6 +138,25 @@ export default function Home() {
       setUploadProgress('')
       e.target.value = ''
     }
+  }
+
+  // 👇 NEW: delete all documents at once using Promise.all
+  const handleClearAll = async () => {
+    if (documents.length === 0) return
+    if (!confirm('Delete all documents? This cannot be undone.')) return
+
+    await Promise.all(
+      documents.map(doc =>
+        fetch(`/api/documents?session_id=${sessionId}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: doc.id }),
+        })
+      )
+    )
+
+    setDocuments([])
+    setSelectedDocIds([])
   }
 
   const handleDeleteDocument = async (id: string) => {
@@ -154,7 +179,6 @@ export default function Home() {
     )
   }
 
-  // 👇 NEW: copy handler
   const handleCopy = async (text: string, index: number) => {
     await navigator.clipboard.writeText(text)
     setCopiedIndex(index)
@@ -275,18 +299,31 @@ export default function Home() {
             />
           </label>
 
+          {/* 👇 UPDATED: added Max 5MB to hint */}
           {!uploading && (
             <p className="text-[9px] text-slate-700 text-center mt-2 tracking-wider">
-              TXT · PDF · MD supported
+              TXT · PDF · MD · Max 5MB
             </p>
           )}
         </div>
 
         {/* Document List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-3">
-            Documents ({documents.length})
-          </p>
+
+          {/* 👇 NEW: heading row with Clear All button */}
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-widest">
+              Documents ({documents.length})
+            </p>
+            {documents.length > 0 && (
+              <button
+                onClick={handleClearAll}
+                className="text-[9px] uppercase tracking-wider text-slate-600 hover:text-red-400 transition-colors"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
 
           {documents.length === 0 && (
             <div className="text-center py-8">
@@ -317,7 +354,6 @@ export default function Home() {
                 )}
               </div>
 
-              {/* 👇 NEW: two-line layout with word count */}
               <div className="flex flex-col flex-1 min-w-0">
                 <span className="text-xs text-slate-300 truncate group-hover:text-white transition-colors">
                   {getFileIcon(doc.name)} {doc.name}
@@ -385,7 +421,6 @@ export default function Home() {
                 }`}>
                   <p className="whitespace-pre-wrap">{msg.content}</p>
 
-                  {/* 👇 NEW: Copy button on assistant messages */}
                   {msg.role === 'assistant' && msg.content && (
                     <div className="mt-3 flex justify-end">
                       <button

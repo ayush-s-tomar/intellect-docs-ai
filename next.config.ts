@@ -1,12 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  typescript: {
-    // This allows production builds to successfully complete 
-    // even if your project has TypeScript errors.
-    ignoreBuildErrors: true,
-  },
-  // ... keep any other existing settings you already have here
+  // No api bodyParser here — Next.js 15 App Router handles this differently
 };
 
 export default nextConfig;
