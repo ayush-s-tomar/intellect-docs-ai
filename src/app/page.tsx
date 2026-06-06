@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useSessionId } from '@/hooks/useSessionId'  // 👈 NEW IMPORT
+import { useSessionId } from '@/hooks/useSessionId'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -13,10 +13,12 @@ interface Document {
   id: string
   name: string
   created_at: string
+  word_count?: number    // 👈 NEW
+  chunk_count?: number   // 👈 NEW
 }
 
 export default function Home() {
-  const sessionId = useSessionId()  // 👈 NEW: get or create session ID
+  const sessionId = useSessionId()
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -31,12 +33,13 @@ export default function Home() {
   const [documents, setDocuments] = useState<Document[]>([])
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
   const [expandedSource, setExpandedSource] = useState<number | null>(null)
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null)  // 👈 NEW
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!sessionId) return  // 👈 NEW: wait until session is ready
+    if (!sessionId) return
     fetchDocuments()
-  }, [sessionId])  // 👈 NEW: re-fetch when session is ready
+  }, [sessionId])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -44,7 +47,7 @@ export default function Home() {
 
   const fetchDocuments = async () => {
     try {
-      const res = await fetch(`/api/documents?session_id=${sessionId}`)  // 👈 NEW: pass session
+      const res = await fetch(`/api/documents?session_id=${sessionId}`)
       const data = await res.json()
       setDocuments(data)
     } catch (err) {
@@ -101,7 +104,7 @@ export default function Home() {
       setUploadProgress('Uploading...')
       const formData = new FormData()
       formData.append('file', uploadFile)
-      formData.append('session_id', sessionId)  // 👈 NEW: send session with upload
+      formData.append('session_id', sessionId)
 
       const res = await fetch('/api/upload', {
         method: 'POST',
@@ -112,6 +115,12 @@ export default function Home() {
       if (data.success) {
         await fetchDocuments()
         setSelectedDocIds(prev => [...prev, data.document.id])
+        // 👇 NEW: save word + chunk count into state
+        setDocuments(prev => prev.map(d =>
+          d.id === data.document.id
+            ? { ...d, word_count: data.wordCount, chunk_count: data.chunksCreated }
+            : d
+        ))
       } else {
         alert('Upload failed: ' + data.error)
       }
@@ -127,7 +136,7 @@ export default function Home() {
 
   const handleDeleteDocument = async (id: string) => {
     try {
-      await fetch(`/api/documents?session_id=${sessionId}`, {  // 👈 NEW: pass session
+      await fetch(`/api/documents?session_id=${sessionId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
@@ -143,6 +152,13 @@ export default function Home() {
     setSelectedDocIds(prev =>
       prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]
     )
+  }
+
+  // 👇 NEW: copy handler
+  const handleCopy = async (text: string, index: number) => {
+    await navigator.clipboard.writeText(text)
+    setCopiedIndex(index)
+    setTimeout(() => setCopiedIndex(null), 2000)
   }
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -165,7 +181,7 @@ export default function Home() {
         body: JSON.stringify({
           messages: [...messages, userMsg],
           selectedDocIds,
-          session_id: sessionId,  // 👈 NEW: send session with chat
+          session_id: sessionId,
         }),
       })
 
@@ -301,9 +317,17 @@ export default function Home() {
                 )}
               </div>
 
-              <span className="text-xs text-slate-300 truncate flex-1 group-hover:text-white transition-colors">
-                {getFileIcon(doc.name)} {doc.name}
-              </span>
+              {/* 👇 NEW: two-line layout with word count */}
+              <div className="flex flex-col flex-1 min-w-0">
+                <span className="text-xs text-slate-300 truncate group-hover:text-white transition-colors">
+                  {getFileIcon(doc.name)} {doc.name}
+                </span>
+                {doc.word_count && (
+                  <span className="text-[9px] text-slate-600 mt-0.5">
+                    {doc.word_count.toLocaleString()} words · {doc.chunk_count} chunks
+                  </span>
+                )}
+              </div>
 
               <button
                 onClick={e => { e.stopPropagation(); handleDeleteDocument(doc.id) }}
@@ -360,6 +384,18 @@ export default function Home() {
                     : 'bg-[#0d0d14] border border-slate-800/60 text-slate-300 w-full'
                 }`}>
                   <p className="whitespace-pre-wrap">{msg.content}</p>
+
+                  {/* 👇 NEW: Copy button on assistant messages */}
+                  {msg.role === 'assistant' && msg.content && (
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        onClick={() => handleCopy(msg.content, i)}
+                        className="text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-lg border transition-all border-slate-700 text-slate-500 hover:text-emerald-400 hover:border-emerald-500/30"
+                      >
+                        {copiedIndex === i ? '✓ Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                  )}
 
                   {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-slate-800/60 space-y-2">

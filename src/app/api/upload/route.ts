@@ -6,18 +6,16 @@ export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File
-    const sessionId = formData.get('session_id') as string  // 👈 NEW LINE
+    const sessionId = formData.get('session_id') as string
 
     if (!file) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 })
     }
 
-    // 👇 NEW: reject if no session ID
     if (!sessionId) {
       return NextResponse.json({ error: 'No session ID provided' }, { status: 400 })
     }
 
-    // Block PDF files
     if (file.type === 'application/pdf') {
       return NextResponse.json({ 
         error: 'Please convert your PDF to a .txt file and upload that instead.' 
@@ -26,6 +24,9 @@ export async function POST(req: NextRequest) {
 
     // Read file as text
     const text = await file.text()
+
+    // 👇 NEW: count words
+    const wordCount = text.trim().split(/\s+/).filter(Boolean).length
 
     // Split into chunks of 500 characters
     const chunkSize = 500
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
       .from('documents')
       .insert({ 
         name: file.name,
-        session_id: sessionId,   // 👈 NEW: attach session to document
+        session_id: sessionId,
       })
       .select()
       .single()
@@ -57,15 +58,17 @@ export async function POST(req: NextRequest) {
           content: chunk,
           embedding: embedding,
           chunk_index: i,
-          session_id: sessionId,   // 👈 NEW: attach session to each chunk
+          session_id: sessionId,
         })
       if (chunkError) throw chunkError
     }
 
+    // 👇 NEW: return wordCount along with other data
     return NextResponse.json({
       success: true,
       document: doc,
       chunksCreated: chunks.length,
+      wordCount,
     })
 
   } catch (err: any) {
