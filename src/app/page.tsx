@@ -34,6 +34,7 @@ export default function Home() {
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
   const [expandedSource, setExpandedSource] = useState<number | null>(null)
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)  // 👈 NEW: mobile sidebar state
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -79,7 +80,6 @@ export default function Home() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // 👇 NEW: block files over 5MB before doing anything
     if (file.size > 5 * 1024 * 1024) {
       alert('File too large. Please upload a file under 5MB.\n\nTip: For large documents, split them into smaller parts.')
       e.target.value = ''
@@ -140,7 +140,6 @@ export default function Home() {
     }
   }
 
-  // 👇 NEW: delete all documents at once using Promise.all
   const handleClearAll = async () => {
     if (documents.length === 0) return
     if (!confirm('Delete all documents? This cannot be undone.')) return
@@ -177,6 +176,33 @@ export default function Home() {
     setSelectedDocIds(prev =>
       prev.includes(id) ? prev.filter(d => d !== id) : [...prev, id]
     )
+  }
+
+  const handleExportChat = () => {
+    if (messages.length <= 1) return
+
+    const lines: string[] = []
+    lines.push('AskMyDocs - Chat Export')
+    lines.push('========================')
+    lines.push(`Date: ${new Date().toLocaleDateString()}`)
+    lines.push('')
+
+    messages.forEach(msg => {
+      lines.push(msg.role === 'user' ? 'You:' : 'AskMyDocs:')
+      lines.push(msg.content)
+      lines.push('')
+    })
+
+    lines.push('========================')
+    lines.push('Exported from AskMyDocs — intellect-docs-ai.vercel.app')
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `askmydocs-chat-${Date.now()}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const handleCopy = async (text: string, index: number) => {
@@ -253,14 +279,39 @@ export default function Home() {
   return (
     <div className="flex h-screen bg-[#0a0a0f] text-slate-100 font-mono overflow-hidden">
 
+      {/* 👇 NEW: Mobile overlay — dark background when sidebar is open */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-20 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-72 bg-[#0d0d14] border-r border-slate-800/40 flex flex-col">
+      {/* 👇 UPDATED: hidden on mobile by default, slides in when sidebarOpen is true */}
+      <aside className={`
+        fixed md:relative z-30 md:z-auto
+        w-72 h-full
+        bg-[#0d0d14] border-r border-slate-800/40
+        flex flex-col
+        transition-transform duration-300
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
 
         {/* Logo */}
         <div className="p-5 border-b border-slate-800/40">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-sm font-bold tracking-widest text-white uppercase">AskMyDocs</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-sm font-bold tracking-widest text-white uppercase">AskMyDocs</span>
+            </div>
+            {/* 👇 NEW: close button inside sidebar — only on mobile */}
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="md:hidden text-slate-500 hover:text-white text-lg leading-none"
+            >
+              ✕
+            </button>
           </div>
           <p className="text-[10px] text-slate-500 mt-1 tracking-wider">RAG · Groq · Supabase</p>
         </div>
@@ -299,7 +350,6 @@ export default function Home() {
             />
           </label>
 
-          {/* 👇 UPDATED: added Max 5MB to hint */}
           {!uploading && (
             <p className="text-[9px] text-slate-700 text-center mt-2 tracking-wider">
               TXT · PDF · MD · Max 5MB
@@ -309,8 +359,6 @@ export default function Home() {
 
         {/* Document List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
-
-          {/* 👇 NEW: heading row with Clear All button */}
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-widest">
               Documents ({documents.length})
@@ -389,6 +437,15 @@ export default function Home() {
         {/* Header */}
         <header className="h-14 border-b border-slate-800/40 bg-[#0a0a0f]/80 backdrop-blur flex items-center justify-between px-6 flex-shrink-0">
           <div className="flex items-center gap-3">
+            {/* 👇 NEW: hamburger button — only visible on mobile */}
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden text-slate-500 hover:text-white transition-colors mr-1"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
             <span className="text-xs text-slate-500 uppercase tracking-widest">Workspace</span>
             {selectedDocIds.length > 0 && (
               <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">
@@ -396,9 +453,21 @@ export default function Home() {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span className="text-[10px] text-slate-500">Connected</span>
+
+          {/* 👇 UPDATED: right side of header with Export Chat button */}
+          <div className="flex items-center gap-4">
+            {messages.length > 1 && (
+              <button
+                onClick={handleExportChat}
+                className="text-[10px] uppercase tracking-wider text-slate-500 hover:text-emerald-400 border border-slate-800 hover:border-emerald-500/30 px-3 py-1.5 rounded-lg transition-all"
+              >
+                Export Chat
+              </button>
+            )}
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="text-[10px] text-slate-500">Connected</span>
+            </div>
           </div>
         </header>
 
