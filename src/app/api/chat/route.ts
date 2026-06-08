@@ -1,34 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import Groq from 'groq-sdk'
+import { embedText } from '@/lib/embeddings'
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, selectedDocIds, session_id } = await req.json()  // 👈 NEW: session_id
+    const { messages, selectedDocIds, session_id } = await req.json()
     const userQuery = messages[messages.length - 1].content
 
-    // Search for relevant chunks using text matching
-    const { data: chunks } = await supabaseAdmin
-      .from('chunks')
-      .select('content, document_id')
-      .in('document_id', selectedDocIds?.length ? selectedDocIds : [''])
-      .eq('session_id', session_id)   // 👈 NEW: only search this user's chunks
-      .textSearch('content', userQuery.split(' ').slice(0, 3).join(' | '), {
-        type: 'websearch',
-        config: 'english'
-      })
-      .limit(5)
+    // Embed the user's question using HuggingFace
+    const queryEmbedding = await embedText(userQuery)
 
-    // Fallback: if text search returns nothing, just get first 5 chunks
+    // Vector similarity search
+    const { data: chunks, error: vectorError } = await supabaseAdmin.rpc('match_chunks', {
+      query_embedding: queryEmbedding,
+      match_count: 5,
+      filter_session_id: session_id,
+      filter_doc_ids: selectedDocIds?.length ? selectedDocIds : [-1],
+    })
+
+    if (vectorError) {
+      console.error('❌ Vector search error:', vectorError)
+    }
+
+    // Fallback: if vector search returns nothing, get first 5 chunks
     let finalChunks = chunks
     if (!chunks || chunks.length === 0) {
+      console.log('Vector search returned 0 results, using fallback...')
       const { data: fallback } = await supabaseAdmin
         .from('chunks')
         .select('content, document_id')
         .in('document_id', selectedDocIds?.length ? selectedDocIds : [''])
-        .eq('session_id', session_id)   // 👈 NEW: fallback also scoped to session
+        .eq('session_id', session_id)
         .limit(5)
       finalChunks = fallback
     }
@@ -36,7 +41,8 @@ export async function POST(req: NextRequest) {
     const context = finalChunks?.map((c: any) => c.content).join('\n\n') || 'No context found.'
     const sources = finalChunks || []
 
-    const fullMessages = [
+    // 👇 Fixed: explicit type annotation to satisfy Groq SDK
+    const fullMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
       {
         role: 'system',
         content: `You are a helpful assistant. Answer the user's question using ONLY the following context from their uploaded document. Always mention where in the document you found the answer.
