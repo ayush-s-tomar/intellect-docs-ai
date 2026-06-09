@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import Groq from 'groq-sdk'
 import { embedText } from '@/lib/embeddings'
+import { chatRatelimit } from '@/lib/ratelimit'  // 👈 NEW
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
@@ -9,6 +10,26 @@ export async function POST(req: NextRequest) {
   try {
     const { messages, selectedDocIds, session_id } = await req.json()
     const userQuery = messages[messages.length - 1].content
+
+    // 👇 NEW: Rate limiting
+    const ip = req.headers.get('x-forwarded-for') ??
+               req.headers.get('x-real-ip') ??
+               '127.0.0.1'
+
+    const { success, limit, remaining } = await chatRatelimit.limit(ip)
+
+    if (!success) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please wait a minute before asking again.' },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': limit.toString(),
+            'X-RateLimit-Remaining': remaining.toString(),
+          }
+        }
+      )
+    }
 
     // Embed the user's question using HuggingFace
     const queryEmbedding = await embedText(userQuery)
@@ -41,7 +62,6 @@ export async function POST(req: NextRequest) {
     const context = finalChunks?.map((c: any) => c.content).join('\n\n') || 'No context found.'
     const sources = finalChunks || []
 
-    // 👇 Fixed: explicit type annotation to satisfy Groq SDK
     const fullMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
       {
         role: 'system',

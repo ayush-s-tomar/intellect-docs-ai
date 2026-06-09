@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { embedText } from '@/lib/embeddings'
+import { uploadRatelimit } from '@/lib/ratelimit'  // 👈 NEW
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,6 +17,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No session ID provided' }, { status: 400 })
     }
 
+    // 👇 NEW: Rate limiting on uploads
+    const ip = req.headers.get('x-forwarded-for') ??
+               req.headers.get('x-real-ip') ??
+               '127.0.0.1'
+
+    const { success } = await uploadRatelimit.limit(ip)
+
+    if (!success) {
+      return NextResponse.json(
+        { error: 'Upload limit reached. You can upload up to 5 documents per hour.' },
+        { status: 429 }
+      )
+    }
+
     if (file.type === 'application/pdf') {
       return NextResponse.json({ 
         error: 'Please convert your PDF to a .txt file and upload that instead.' 
@@ -25,7 +40,7 @@ export async function POST(req: NextRequest) {
     // Read file as text
     const text = await file.text()
 
-    // 👇 NEW: count words
+    // Count words
     const wordCount = text.trim().split(/\s+/).filter(Boolean).length
 
     // Split into chunks of 500 characters
@@ -57,13 +72,13 @@ export async function POST(req: NextRequest) {
           document_id: doc.id,
           content: chunk,
           embedding: embedding,
+          embedding_v2: embedding,
           chunk_index: i,
           session_id: sessionId,
         })
       if (chunkError) throw chunkError
     }
 
-    // 👇 NEW: return wordCount along with other data
     return NextResponse.json({
       success: true,
       document: doc,
