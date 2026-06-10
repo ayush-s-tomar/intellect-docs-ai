@@ -6,18 +6,18 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 })
 
-// Chat: max 10 requests per minute per IP
+// Chat: max 30 requests per minute per IP
 export const chatRatelimit = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(10, '1 m'),
+  limiter: Ratelimit.slidingWindow(30, '1 m'),
   analytics: true,
   prefix: 'askmydocs:chat',
 })
 
-// Upload: max 5 uploads per hour per IP
+// Upload: max 20 uploads per hour per IP
 export const uploadRatelimit = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(5, '60 m'),
+  limiter: Ratelimit.slidingWindow(20, '60 m'),
   analytics: true,
   prefix: 'askmydocs:upload',
 })
