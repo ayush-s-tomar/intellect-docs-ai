@@ -6,7 +6,7 @@ import { useSessionId } from '@/hooks/useSessionId'
 interface Message {
   role: 'user' | 'assistant'
   content: string
-  sources?: { content: string; document_id: string }[]
+  sources?: { content: string; document_id: string; similarity?: number | null }[]  // 👈 NEW
 }
 
 interface Document {
@@ -34,7 +34,7 @@ export default function Home() {
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
   const [expandedSource, setExpandedSource] = useState<number | null>(null)
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
-  const [sidebarOpen, setSidebarOpen] = useState(false)  // 👈 NEW: mobile sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -279,7 +279,6 @@ export default function Home() {
   return (
     <div className="flex h-screen bg-[#0a0a0f] text-slate-100 font-mono overflow-hidden">
 
-      {/* 👇 NEW: Mobile overlay — dark background when sidebar is open */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/60 z-20 md:hidden"
@@ -287,8 +286,6 @@ export default function Home() {
         />
       )}
 
-      {/* Sidebar */}
-      {/* 👇 UPDATED: hidden on mobile by default, slides in when sidebarOpen is true */}
       <aside className={`
         fixed md:relative z-30 md:z-auto
         w-72 h-full
@@ -298,14 +295,12 @@ export default function Home() {
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
       `}>
 
-        {/* Logo */}
         <div className="p-5 border-b border-slate-800/40">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-sm font-bold tracking-widest text-white uppercase">AskMyDocs</span>
             </div>
-            {/* 👇 NEW: close button inside sidebar — only on mobile */}
             <button
               onClick={() => setSidebarOpen(false)}
               className="md:hidden text-slate-500 hover:text-white text-lg leading-none"
@@ -316,7 +311,6 @@ export default function Home() {
           <p className="text-[10px] text-slate-500 mt-1 tracking-wider">RAG · Groq · Supabase</p>
         </div>
 
-        {/* Upload */}
         <div className="p-4 border-b border-slate-800/40">
           <label className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-xs font-semibold tracking-wider uppercase transition-all cursor-pointer border ${
             uploading
@@ -357,7 +351,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* Document List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-widest">
@@ -423,7 +416,6 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Footer */}
         <div className="p-4 border-t border-slate-800/40">
           <p className="text-[10px] text-slate-600 text-center">
             {selectedDocIds.length} of {documents.length} selected
@@ -431,13 +423,10 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* Main */}
       <main className="flex-1 flex flex-col h-full overflow-hidden">
 
-        {/* Header */}
         <header className="h-14 border-b border-slate-800/40 bg-[#0a0a0f]/80 backdrop-blur flex items-center justify-between px-6 flex-shrink-0">
           <div className="flex items-center gap-3">
-            {/* 👇 NEW: hamburger button — only visible on mobile */}
             <button
               onClick={() => setSidebarOpen(true)}
               className="md:hidden text-slate-500 hover:text-white transition-colors mr-1"
@@ -454,7 +443,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* 👇 UPDATED: right side of header with Export Chat button */}
           <div className="flex items-center gap-4">
             {messages.length > 1 && (
               <button
@@ -471,7 +459,6 @@ export default function Home() {
           </div>
         </header>
 
-        {/* Messages */}
         <section className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -512,8 +499,14 @@ export default function Home() {
                             onClick={() => setExpandedSource(expandedSource === si + i * 100 ? null : si + i * 100)}
                             className="w-full flex items-center justify-between px-3 py-2 bg-slate-900/60 hover:bg-slate-900 transition-colors text-left"
                           >
-                            <span className="text-[10px] text-emerald-400 uppercase tracking-wider">
+                            {/* 👇 NEW: chunk label with similarity score */}
+                            <span className="text-[10px] text-emerald-400 uppercase tracking-wider flex items-center gap-2">
                               Chunk {si + 1}
+                              {src.similarity && (
+                                <span className="text-slate-500 normal-case tracking-normal">
+                                  {src.similarity}% match
+                                </span>
+                              )}
                             </span>
                             <span className="text-[10px] text-slate-600">
                               {expandedSource === si + i * 100 ? '▲ hide' : '▼ show'}
@@ -551,7 +544,6 @@ export default function Home() {
           <div ref={messagesEndRef} />
         </section>
 
-        {/* Input */}
         <footer className="p-6 border-t border-slate-800/40 flex-shrink-0">
           <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto flex items-center gap-3">
             <input

@@ -60,7 +60,11 @@ export async function POST(req: NextRequest) {
     }
 
     const context = finalChunks?.map((c: any) => c.content).join('\n\n') || 'No context found.'
-    const sources = finalChunks || []
+    const sources = (finalChunks || []).map((c: any) => ({
+  content: c.content,
+  document_id: c.document_id,
+  similarity: c.similarity ? Math.round(c.similarity * 100) : null,
+}))
 
     const fullMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
       {
