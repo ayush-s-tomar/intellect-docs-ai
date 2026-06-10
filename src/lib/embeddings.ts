@@ -1,28 +1,29 @@
-const GROQ_API_KEY = process.env.GROQ_API_KEY
+const COHERE_API_KEY = process.env.COHERE_API_KEY
 
 export async function embedText(text: string): Promise<number[]> {
   const cleanText = text.trim().slice(0, 512)
 
-  const response = await fetch('https://api.groq.com/openai/v1/embeddings', {
+  const response = await fetch('https://api.cohere.com/v1/embed', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${GROQ_API_KEY}`,
+      'Authorization': `Bearer ${COHERE_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'nomic-embed-text-v1_5',
-      input: cleanText,
+      texts: [cleanText],
+      model: 'embed-english-light-v3.0',  // free, 384 dimensions
+      input_type: 'search_document',
     }),
   })
 
   if (!response.ok) {
     const err = await response.text()
-    console.error('Groq embedding error:', err)
-    return new Array(768).fill(0)
+    console.error('Cohere embedding error:', err)
+    return new Array(384).fill(0)
   }
 
   const data = await response.json()
-  return data.data[0].embedding
+  return data.embeddings[0]
 }
 
 export async function embedBatch(texts: string[]): Promise<number[][]> {
