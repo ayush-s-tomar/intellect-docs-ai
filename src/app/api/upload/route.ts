@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { embedText } from '@/lib/embeddings'
-import { uploadRatelimit } from '@/lib/ratelimit'  // 👈 NEW
+import { uploadRatelimit } from '@/lib/ratelimit'
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No session ID provided' }, { status: 400 })
     }
 
-    // 👇 NEW: Rate limiting on uploads
+    // Rate limiting
     const ip = req.headers.get('x-forwarded-for') ??
                req.headers.get('x-real-ip') ??
                '127.0.0.1'
@@ -32,28 +32,31 @@ export async function POST(req: NextRequest) {
     }
 
     if (file.type === 'application/pdf') {
-      return NextResponse.json({ 
-        error: 'Please convert your PDF to a .txt file and upload that instead.' 
+      return NextResponse.json({
+        error: 'Please convert your PDF to a .txt file and upload that instead.'
       }, { status: 400 })
     }
 
-    // Read file as text
     const text = await file.text()
 
     // Count words
     const wordCount = text.trim().split(/\s+/).filter(Boolean).length
 
-    // Split into chunks of 500 characters
+    // 👇 NEW: chunk with overlap instead of hard cuts
     const chunkSize = 500
-    const chunks = []
-    for (let i = 0; i < text.length; i += chunkSize) {
+    const overlap = 100   // last 100 chars of previous chunk repeated at start of next
+    const chunks: string[] = []
+
+    let i = 0
+    while (i < text.length) {
       chunks.push(text.slice(i, i + chunkSize))
+      i += chunkSize - overlap   // 👈 move forward by 400, not 500
     }
 
-    // Save document record to Supabase
+    // Save document to Supabase
     const { data: doc, error: docError } = await supabaseAdmin
       .from('documents')
-      .insert({ 
+      .insert({
         name: file.name,
         session_id: sessionId,
       })
@@ -62,7 +65,7 @@ export async function POST(req: NextRequest) {
 
     if (docError) throw docError
 
-    // Embed each chunk and save with chunk_index
+    // Embed and save each chunk
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i]
       const embedding = await embedText(chunk)
