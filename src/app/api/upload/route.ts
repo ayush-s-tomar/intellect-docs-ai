@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
           document_id: doc.id,
           content: chunk,
           embedding: embedding,
-          embedding_v2: embedding,
+          embedding_v3: embedding,
           chunk_index: i,
           session_id: sessionId,
         })
