@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     if (vectorError) {
       console.error('❌ Vector search error:', vectorError)
     }
-
+    console.log('chunks from vector search:', JSON.stringify(chunks?.slice(0, 2)))
     // Fallback: if vector search returns nothing, get first 5 chunks
     let finalChunks = chunks
     if (!chunks || chunks.length === 0) {
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     const sources = (finalChunks || []).map((c: any) => ({
   content: c.content,
   document_id: c.document_id,
-  similarity: c.similarity ? Math.round(c.similarity * 100) : null,
+  similarity: (c.similarity && !isNaN(c.similarity)) ? Math.round(c.similarity * 100) : null,
 }))
 
     const fullMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
