@@ -74,7 +74,6 @@ export async function POST(req: NextRequest) {
         .insert({
           document_id: doc.id,
           content: chunk,
-          embedding: embedding,
           embedding_v3: embedding,   // 👈 must be v3 now
           chunk_index: i,
           session_id: sessionId,
