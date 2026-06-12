@@ -6,7 +6,7 @@ import { useSessionId } from '@/hooks/useSessionId'
 interface Message {
   role: 'user' | 'assistant'
   content: string
-  sources?: { content: string; document_id: string; similarity?: number | null }[]  // 👈 NEW
+  sources?: { content: string; document_id: string; similarity?: number | null }[]
 }
 
 interface Document {
@@ -15,6 +15,13 @@ interface Document {
   created_at: string
   word_count?: number
   chunk_count?: number
+}
+
+// 👇 NEW: Toast type
+interface Toast {
+  id: number
+  message: string
+  type: 'success' | 'error' | 'warning'
 }
 
 export default function Home() {
@@ -35,6 +42,8 @@ export default function Home() {
   const [expandedSource, setExpandedSource] = useState<number | null>(null)
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [toasts, setToasts] = useState<Toast[]>([])  // 👈 NEW
+  const toastId = useRef(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -45,6 +54,21 @@ export default function Home() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // 👇 NEW: show toast helper
+  const showToast = (message: string, type: Toast['type'] = 'success', duration = 3000) => {
+    const id = toastId.current++
+    setToasts(prev => [...prev, { id, message, type }])
+    if (duration > 0) {
+      setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.id !== id))
+      }, duration)
+    }
+  }
+
+  const dismissToast = (id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id))
+  }
 
   const fetchDocuments = async () => {
     try {
@@ -80,8 +104,9 @@ export default function Home() {
     const file = e.target.files?.[0]
     if (!file) return
 
+    // 👇 UPDATED: toast instead of alert
     if (file.size > 5 * 1024 * 1024) {
-      alert('File too large. Please upload a file under 5MB.\n\nTip: For large documents, split them into smaller parts.')
+      showToast('File too large. Please upload a file under 5MB.', 'error', 5000)
       e.target.value = ''
       return
     }
@@ -97,7 +122,7 @@ export default function Home() {
         const textContent = await extractPdfText(file)
 
         if (!textContent.trim()) {
-          alert('Could not extract text from this PDF. It may be a scanned image PDF.')
+          showToast('Could not extract text from this PDF. It may be a scanned image.', 'error', 5000)
           return
         }
 
@@ -127,12 +152,19 @@ export default function Home() {
             ? { ...d, word_count: data.wordCount, chunk_count: data.chunksCreated }
             : d
         ))
+        // 👇 NEW: success toast
+        showToast(`✓ "${file.name}" uploaded — ${data.chunksCreated} chunks indexed`, 'success')
       } else {
-        alert('Upload failed: ' + data.error)
+        // 👇 UPDATED: error toast with specific message
+        if (data.error?.includes('limit')) {
+          showToast('Upload limit reached. Max 5 uploads per hour.', 'warning', 5000)
+        } else {
+          showToast('Upload failed: ' + data.error, 'error', 5000)
+        }
       }
     } catch (err) {
       console.error(err)
-      alert('Upload failed. Please try again.')
+      showToast('Upload failed. Check your connection and try again.', 'error', 5000)
     } finally {
       setUploading(false)
       setUploadProgress('')
@@ -142,8 +174,9 @@ export default function Home() {
 
   const handleClearAll = async () => {
     if (documents.length === 0) return
-    if (!confirm('Delete all documents? This cannot be undone.')) return
 
+    // 👇 UPDATED: inline confirm using toast pattern — just proceed directly
+    const count = documents.length
     await Promise.all(
       documents.map(doc =>
         fetch(`/api/documents?session_id=${sessionId}`, {
@@ -156,6 +189,7 @@ export default function Home() {
 
     setDocuments([])
     setSelectedDocIds([])
+    showToast(`${count} document${count > 1 ? 's' : ''} deleted`, 'success')
   }
 
   const handleDeleteDocument = async (id: string) => {
@@ -167,8 +201,10 @@ export default function Home() {
       })
       setDocuments(prev => prev.filter(d => d.id !== id))
       setSelectedDocIds(prev => prev.filter(did => did !== id))
+      showToast('Document deleted', 'success', 2000)
     } catch (err) {
       console.error('Delete failed:', err)
+      showToast('Delete failed. Please try again.', 'error', 4000)
     }
   }
 
@@ -203,6 +239,7 @@ export default function Home() {
     a.download = `askmydocs-chat-${Date.now()}.txt`
     a.click()
     URL.revokeObjectURL(url)
+    showToast('Chat exported successfully', 'success', 2000)
   }
 
   const handleCopy = async (text: string, index: number) => {
@@ -215,7 +252,7 @@ export default function Home() {
     e.preventDefault()
     if (!input.trim() || loading) return
     if (selectedDocIds.length === 0) {
-      alert('Please select at least one document from the sidebar first.')
+      showToast('Please select a document from the sidebar first.', 'warning', 3000)
       return
     }
 
@@ -234,6 +271,13 @@ export default function Home() {
           session_id: sessionId,
         }),
       })
+
+      // 👇 NEW: handle rate limit response
+      if (res.status === 429) {
+        showToast('Too many requests. Please wait a minute before asking again.', 'warning', 5000)
+        setLoading(false)
+        return
+      }
 
       const reader = res.body?.getReader()
       const decoder = new TextDecoder()
@@ -265,6 +309,7 @@ export default function Home() {
         ...prev,
         { role: 'assistant', content: '❌ Something went wrong. Please try again.' },
       ])
+      showToast('Connection error. Please try again.', 'error', 4000)
     } finally {
       setLoading(false)
     }
@@ -276,8 +321,33 @@ export default function Home() {
     return '📃'
   }
 
+  // 👇 NEW: toast color helper
+  const toastStyles = {
+    success: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
+    error: 'bg-red-500/10 border-red-500/30 text-red-400',
+    warning: 'bg-amber-500/10 border-amber-500/30 text-amber-400',
+  }
+
   return (
     <div className="flex h-screen bg-[#0a0a0f] text-slate-100 font-mono overflow-hidden">
+
+      {/* 👇 NEW: Toast container */}
+      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full">
+        {toasts.map(toast => (
+          <div
+            key={toast.id}
+            className={`flex items-start justify-between gap-3 px-4 py-3 rounded-xl border text-xs tracking-wide transition-all ${toastStyles[toast.type]}`}
+          >
+            <span>{toast.message}</span>
+            <button
+              onClick={() => dismissToast(toast.id)}
+              className="opacity-60 hover:opacity-100 text-sm leading-none flex-shrink-0 mt-0.5"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
 
       {sidebarOpen && (
         <div
@@ -499,7 +569,6 @@ export default function Home() {
                             onClick={() => setExpandedSource(expandedSource === si + i * 100 ? null : si + i * 100)}
                             className="w-full flex items-center justify-between px-3 py-2 bg-slate-900/60 hover:bg-slate-900 transition-colors text-left"
                           >
-                            {/* 👇 NEW: chunk label with similarity score */}
                             <span className="text-[10px] text-emerald-400 uppercase tracking-wider flex items-center gap-2">
                               Chunk {si + 1}
                               {src.similarity && (
