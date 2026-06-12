@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
         .insert({
           document_id: doc.id,
           content: chunk,
-          embedding_v4: embedding,   // 👈 must be v4 now
+          embedding_v2: embedding,   // 👈 matches our Supabase column name
           chunk_index: i,
           session_id: sessionId,
         })
