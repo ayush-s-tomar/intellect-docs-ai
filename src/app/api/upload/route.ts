@@ -2,6 +2,37 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { embedText } from '@/lib/embeddings'
 import { uploadRatelimit } from '@/lib/ratelimit'
+import Groq from 'groq-sdk'
+
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+
+// 👇 NEW: generates a 2-sentence summary from first 3 chunks
+async function generateSummary(chunks: string[]): Promise<string> {
+  try {
+    const preview = chunks.slice(0, 3).join('\n\n').slice(0, 1500)
+
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.1-8b-instant',
+      temperature: 0.3,
+      max_tokens: 60,
+      messages: [
+        {
+          role: 'system',
+          content: 'Summarize the following document content in exactly 2 sentences. Be concise and factual.'
+        },
+        {
+          role: 'user',
+          content: preview
+        }
+      ],
+    })
+
+    return completion.choices[0]?.message?.content?.trim() || ''
+  } catch (err) {
+    console.error('Summary generation failed:', err)
+    return ''  // don't crash upload if summary fails
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -42,16 +73,19 @@ export async function POST(req: NextRequest) {
     // Count words
     const wordCount = text.trim().split(/\s+/).filter(Boolean).length
 
-    // 👇 NEW: chunk with overlap instead of hard cuts
+    // Chunk with overlap
     const chunkSize = 500
-    const overlap = 100   // last 100 chars of previous chunk repeated at start of next
+    const overlap = 100
     const chunks: string[] = []
 
     let i = 0
     while (i < text.length) {
       chunks.push(text.slice(i, i + chunkSize))
-      i += chunkSize - overlap   // 👈 move forward by 400, not 500
+      i += chunkSize - overlap
     }
+
+    // 👇 NEW: generate summary before saving (uses first 3 chunks)
+    const summary = await generateSummary(chunks)
 
     // Save document to Supabase
     const { data: doc, error: docError } = await supabaseAdmin
@@ -59,6 +93,7 @@ export async function POST(req: NextRequest) {
       .insert({
         name: file.name,
         session_id: sessionId,
+        summary: summary,   // 👈 NEW
       })
       .select()
       .single()
@@ -74,7 +109,7 @@ export async function POST(req: NextRequest) {
         .insert({
           document_id: doc.id,
           content: chunk,
-          embedding_v2: embedding,   // 👈 matches our Supabase column name
+          embedding_v2: embedding,
           chunk_index: i,
           session_id: sessionId,
         })
@@ -86,6 +121,7 @@ export async function POST(req: NextRequest) {
       document: doc,
       chunksCreated: chunks.length,
       wordCount,
+      summary,   // 👈 NEW
     })
 
   } catch (err: any) {

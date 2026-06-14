@@ -15,9 +15,9 @@ interface Document {
   created_at: string
   word_count?: number
   chunk_count?: number
+  summary?: string   // 👈 NEW
 }
 
-// 👇 NEW: Toast type
 interface Toast {
   id: number
   message: string
@@ -42,7 +42,7 @@ export default function Home() {
   const [expandedSource, setExpandedSource] = useState<number | null>(null)
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [toasts, setToasts] = useState<Toast[]>([])  // 👈 NEW
+  const [toasts, setToasts] = useState<Toast[]>([])
   const toastId = useRef(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -55,7 +55,6 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // 👇 NEW: show toast helper
   const showToast = (message: string, type: Toast['type'] = 'success', duration = 3000) => {
     const id = toastId.current++
     setToasts(prev => [...prev, { id, message, type }])
@@ -104,7 +103,6 @@ export default function Home() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // 👇 UPDATED: toast instead of alert
     if (file.size > 5 * 1024 * 1024) {
       showToast('File too large. Please upload a file under 5MB.', 'error', 5000)
       e.target.value = ''
@@ -147,15 +145,14 @@ export default function Home() {
       if (data.success) {
         await fetchDocuments()
         setSelectedDocIds(prev => [...prev, data.document.id])
+        // 👇 UPDATED: also save summary into state
         setDocuments(prev => prev.map(d =>
           d.id === data.document.id
-            ? { ...d, word_count: data.wordCount, chunk_count: data.chunksCreated }
+            ? { ...d, word_count: data.wordCount, chunk_count: data.chunksCreated, summary: data.summary }
             : d
         ))
-        // 👇 NEW: success toast
         showToast(`✓ "${file.name}" uploaded — ${data.chunksCreated} chunks indexed`, 'success')
       } else {
-        // 👇 UPDATED: error toast with specific message
         if (data.error?.includes('limit')) {
           showToast('Upload limit reached. Max 5 uploads per hour.', 'warning', 5000)
         } else {
@@ -174,8 +171,6 @@ export default function Home() {
 
   const handleClearAll = async () => {
     if (documents.length === 0) return
-
-    // 👇 UPDATED: inline confirm using toast pattern — just proceed directly
     const count = documents.length
     await Promise.all(
       documents.map(doc =>
@@ -186,7 +181,6 @@ export default function Home() {
         })
       )
     )
-
     setDocuments([])
     setSelectedDocIds([])
     showToast(`${count} document${count > 1 ? 's' : ''} deleted`, 'success')
@@ -272,7 +266,6 @@ export default function Home() {
         }),
       })
 
-      // 👇 NEW: handle rate limit response
       if (res.status === 429) {
         showToast('Too many requests. Please wait a minute before asking again.', 'warning', 5000)
         setLoading(false)
@@ -321,7 +314,6 @@ export default function Home() {
     return '📃'
   }
 
-  // 👇 NEW: toast color helper
   const toastStyles = {
     success: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
     error: 'bg-red-500/10 border-red-500/30 text-red-400',
@@ -331,7 +323,7 @@ export default function Home() {
   return (
     <div className="flex h-screen bg-[#0a0a0f] text-slate-100 font-mono overflow-hidden">
 
-      {/* 👇 NEW: Toast container */}
+      {/* Toast container */}
       <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full">
         {toasts.map(toast => (
           <div
@@ -472,6 +464,12 @@ export default function Home() {
                 {doc.word_count && (
                   <span className="text-[9px] text-slate-600 mt-0.5">
                     {doc.word_count.toLocaleString()} words · {doc.chunk_count} chunks
+                  </span>
+                )}
+                {/* 👇 NEW: show summary under word count */}
+                {doc.summary && (
+                  <span className="text-[9px] text-slate-500 mt-1 leading-relaxed line-clamp-2">
+                    {doc.summary}
                   </span>
                 )}
               </div>
