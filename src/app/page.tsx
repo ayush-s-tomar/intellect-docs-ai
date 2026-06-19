@@ -520,6 +520,7 @@ export default function Home() {
               </button>
             )}
             
+            <a
               href="/eval"
               className="text-[10px] uppercase tracking-wider text-slate-600 hover:text-emerald-400 transition-colors"
             >
