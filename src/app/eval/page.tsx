@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSessionId } from '@/hooks/useSessionId'
 
 interface EvalResult {
@@ -29,16 +29,31 @@ interface EvalResponse {
   results: EvalResult[]
 }
 
+interface Document {
+  id: string
+  name: string
+}
+
 export default function EvalPage() {
   const sessionId = useSessionId()
   const [documentId, setDocumentId] = useState('')
+  const [documents, setDocuments] = useState<Document[]>([])  // 👈 NEW
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState<EvalResponse | null>(null)
   const [error, setError] = useState('')
 
+  // 👇 NEW: fetch documents automatically when session is ready
+  useEffect(() => {
+    if (!sessionId) return
+    fetch(`/api/documents?session_id=${sessionId}`)
+      .then(r => r.json())
+      .then(data => setDocuments(data || []))
+      .catch(() => setDocuments([]))
+  }, [sessionId])
+
   const runEval = async () => {
     if (!documentId.trim()) {
-      setError('Please enter a document ID')
+      setError('Please select a document first')
       return
     }
     setLoading(true)
@@ -87,39 +102,67 @@ export default function EvalPage() {
 
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs text-slate-500 uppercase tracking-widest">
-              AskMyDocs
-            </span>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-xs text-slate-500 uppercase tracking-widest">
+                  AskMyDocs
+                </span>
+              </div>
+              <h1 className="text-2xl font-bold text-white">RAG Eval Suite</h1>
+              <p className="text-sm text-slate-500 mt-1">
+                Automatically test your pipeline quality with scored questions
+              </p>
+            </div>
+            {/* 👇 Back link in header */}
+            
+              href="/"
+              className="text-xs text-slate-600 hover:text-emerald-400 transition-colors"
+            >
+              ← Back
+            </a>
           </div>
-          <h1 className="text-2xl font-bold text-white">RAG Eval Suite</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Automatically test your pipeline quality with scored questions
-          </p>
         </div>
 
-        {/* How to use */}
+        {/* How to use — updated */}
         <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 mb-6 text-xs text-slate-500 leading-relaxed">
           <p className="text-slate-400 font-semibold mb-1">How to use:</p>
           <p>1. Upload a document on the <a href="/" className="text-emerald-400 hover:underline">main page</a></p>
-          <p>2. Find its ID in Supabase → Table Editor → documents → copy the id value</p>
-          <p>3. Paste it below and click Run Eval</p>
-          <p className="mt-2 text-slate-600">Takes ~30-60 seconds to run all questions.</p>
+          <p>2. Come back here and select it from the dropdown below</p>
+          <p>3. Click Run Eval and wait ~30-60 seconds for results</p>
+          <p className="mt-2 text-slate-600">
+            Scores are 0-10. Grade A = 8+, B = 6-8, C = 4-6, D = below 4.
+          </p>
         </div>
 
-        {/* Input */}
+        {/* 👇 UPDATED: Dropdown instead of text input */}
         <div className="flex gap-3 mb-8">
-          <input
-            type="text"
-            value={documentId}
-            onChange={e => setDocumentId(e.target.value)}
-            placeholder="Paste document ID here (e.g. 42)"
-            className="flex-1 bg-[#0d0d14] border border-slate-800 text-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500/40 placeholder:text-slate-600"
-          />
+          {documents.length === 0 ? (
+            <div className="flex-1 bg-[#0d0d14] border border-slate-800 text-slate-600 rounded-xl px-4 py-3 text-sm">
+              {sessionId ? 'No documents found — upload one first' : 'Loading...'}
+            </div>
+          ) : (
+            <select
+              value={documentId}
+              onChange={e => {
+                setDocumentId(e.target.value)
+                setReport(null)
+                setError('')
+              }}
+              className="flex-1 bg-[#0d0d14] border border-slate-800 text-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500/40"
+            >
+              <option value="">Select a document to evaluate...</option>
+              {documents.map(doc => (
+                <option key={doc.id} value={doc.id}>
+                  {doc.name} (id: {doc.id})
+                </option>
+              ))}
+            </select>
+          )}
           <button
             onClick={runEval}
-            disabled={loading}
+            disabled={loading || !documentId}
             className="px-6 py-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-semibold uppercase tracking-wider hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
           >
             {loading ? 'Running...' : 'Run Eval'}
@@ -135,7 +178,7 @@ export default function EvalPage() {
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
             <p className="text-xs text-slate-500">
-              Running {5} eval questions... this takes ~30-60 seconds
+              Running 5 eval questions... this takes ~30-60 seconds
             </p>
           </div>
         )}
@@ -161,13 +204,15 @@ export default function EvalPage() {
               </div>
               <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4 text-center">
                 <p className="text-3xl font-bold text-white">
-                  {report.summary.averageScore}<span className="text-lg text-slate-500">/10</span>
+                  {report.summary.averageScore}
+                  <span className="text-lg text-slate-500">/10</span>
                 </p>
                 <p className="text-[10px] text-slate-600 uppercase tracking-wider mt-1">Avg Score</p>
               </div>
               <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4 text-center">
                 <p className="text-3xl font-bold text-emerald-400">
-                  {report.summary.passRate}<span className="text-lg text-slate-500">%</span>
+                  {report.summary.passRate}
+                  <span className="text-lg text-slate-500">%</span>
                 </p>
                 <p className="text-[10px] text-slate-600 uppercase tracking-wider mt-1">Pass Rate</p>
               </div>
@@ -221,15 +266,16 @@ export default function EvalPage() {
               ))}
             </div>
 
-            {/* Back link */}
-            <div className="text-center pt-4">
-              
-                href="/"
+            {/* Run again button */}
+            <div className="text-center pt-2">
+              <button
+                onClick={() => { setReport(null); setDocumentId('') }}
                 className="text-xs text-slate-600 hover:text-emerald-400 transition-colors"
               >
-                ← Back to AskMyDocs
-              </a>
+                ← Run another eval
+              </button>
             </div>
+
           </div>
         )}
       </div>
