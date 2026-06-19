@@ -15,7 +15,7 @@ interface Document {
   created_at: string
   word_count?: number
   chunk_count?: number
-  summary?: string   // 👈 NEW
+  summary?: string
 }
 
 interface Toast {
@@ -145,7 +145,6 @@ export default function Home() {
       if (data.success) {
         await fetchDocuments()
         setSelectedDocIds(prev => [...prev, data.document.id])
-        // 👇 UPDATED: also save summary into state
         setDocuments(prev => prev.map(d =>
           d.id === data.document.id
             ? { ...d, word_count: data.wordCount, chunk_count: data.chunksCreated, summary: data.summary }
@@ -466,7 +465,6 @@ export default function Home() {
                     {doc.word_count.toLocaleString()} words · {doc.chunk_count} chunks
                   </span>
                 )}
-                {/* 👇 NEW: show summary under word count */}
                 {doc.summary && (
                   <span className="text-[9px] text-slate-500 mt-1 leading-relaxed line-clamp-2">
                     {doc.summary}
@@ -511,6 +509,7 @@ export default function Home() {
             )}
           </div>
 
+          {/* 👇 UPDATED: added Eval link */}
           <div className="flex items-center gap-4">
             {messages.length > 1 && (
               <button
@@ -520,6 +519,12 @@ export default function Home() {
                 Export Chat
               </button>
             )}
+            
+              href="/eval"
+              className="text-[10px] uppercase tracking-wider text-slate-600 hover:text-emerald-400 transition-colors"
+            >
+              Eval
+            </a>
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
               <span className="text-[10px] text-slate-500">Connected</span>
