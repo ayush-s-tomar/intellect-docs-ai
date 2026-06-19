@@ -32,7 +32,6 @@ export async function POST(req: NextRequest) {
 
     const queryEmbedding = await embedText(userQuery)
 
-    // 👇 FIX: convert string IDs to numbers so bigint matches
     const docIds = selectedDocIds?.length
       ? selectedDocIds.map((id: string) => parseInt(id, 10))
       : [-1]
@@ -41,18 +40,15 @@ export async function POST(req: NextRequest) {
       query_embedding: queryEmbedding,
       match_count: 5,
       filter_session_id: session_id,
-      filter_doc_ids: docIds,  // 👈 now numbers not strings
+      filter_doc_ids: docIds,
     })
 
     if (vectorError) {
       console.error('❌ Vector search error:', vectorError)
     }
 
-    console.log('chunks from vector search:', JSON.stringify(chunks?.slice(0, 2)))
-
     let finalChunks = chunks
     if (!chunks || chunks.length === 0) {
-      console.log('Vector search returned 0 results, using fallback...')
       const { data: fallback } = await supabaseAdmin
         .from('chunks')
         .select('content, document_id')
@@ -63,10 +59,14 @@ export async function POST(req: NextRequest) {
     }
 
     const context = finalChunks?.map((c: any) => c.content).join('\n\n') || 'No context found.'
+
+    // 👇 FIXED: hide negative/zero similarity scores
     const sources = (finalChunks || []).map((c: any) => ({
       content: c.content,
       document_id: c.document_id,
-      similarity: (c.similarity && !isNaN(c.similarity)) ? Math.round(c.similarity * 100) : null,
+      similarity: (c.similarity && !isNaN(c.similarity) && c.similarity > 0)
+        ? Math.round(c.similarity * 100)
+        : null,
     }))
 
     const fullMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
