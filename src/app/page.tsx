@@ -509,7 +509,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* 👇 FIXED: proper <a> tag now */}
           <div className="flex items-center gap-4">
             {messages.length > 1 && (
               <button
