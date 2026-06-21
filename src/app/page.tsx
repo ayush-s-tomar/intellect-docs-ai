@@ -518,7 +518,7 @@ export default function Home() {
                 Export Chat
               </button>
             )}
-            
+            <a
               href="/eval"
               className="text-[10px] uppercase tracking-wider text-slate-600 hover:text-emerald-400 transition-colors"
             >
