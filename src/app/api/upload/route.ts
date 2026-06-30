@@ -6,7 +6,6 @@ import Groq from 'groq-sdk'
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
-// 👇 NEW: generates a 2-sentence summary from first 3 chunks
 async function generateSummary(chunks: string[]): Promise<string> {
   try {
     const preview = chunks.slice(0, 3).join('\n\n').slice(0, 1500)
@@ -30,8 +29,48 @@ async function generateSummary(chunks: string[]): Promise<string> {
     return completion.choices[0]?.message?.content?.trim() || ''
   } catch (err) {
     console.error('Summary generation failed:', err)
-    return ''  // don't crash upload if summary fails
+    return ''
   }
+}
+
+// Section-aware chunking: splits on blank-line paragraph/section boundaries
+// first, then only falls back to character slicing for any section that's
+// still too long. Keeps each chunk's text aligned with a single topic, so
+// vector similarity matches line up with the section that actually answers
+// the question, instead of cutting mid-section like raw character slicing did.
+function chunkText(text: string, maxChunkSize = 700, overlap = 100): string[] {
+  const rawSections = text
+    .split(/\n\s*\n/)
+    .map(s => s.trim())
+    .filter(Boolean)
+
+  const chunks: string[] = []
+
+  for (const section of rawSections) {
+    if (section.length <= maxChunkSize) {
+      chunks.push(section)
+      continue
+    }
+
+    let i = 0
+    while (i < section.length) {
+      chunks.push(section.slice(i, i + maxChunkSize))
+      i += maxChunkSize - overlap
+    }
+  }
+
+  // Merge very small chunks (e.g. lone heading lines) into the following
+  // chunk so headings stay attached to their content.
+  const merged: string[] = []
+  for (const chunk of chunks) {
+    if (merged.length > 0 && merged[merged.length - 1].length < 80) {
+      merged[merged.length - 1] = merged[merged.length - 1] + '\n\n' + chunk
+    } else {
+      merged.push(chunk)
+    }
+  }
+
+  return merged
 }
 
 export async function POST(req: NextRequest) {
@@ -48,7 +87,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No session ID provided' }, { status: 400 })
     }
 
-    // Rate limiting
     const ip = req.headers.get('x-forwarded-for') ??
                req.headers.get('x-real-ip') ??
                '127.0.0.1'
@@ -70,37 +108,25 @@ export async function POST(req: NextRequest) {
 
     const text = await file.text()
 
-    // Count words
     const wordCount = text.trim().split(/\s+/).filter(Boolean).length
 
-    // Chunk with overlap
-    const chunkSize = 500
-    const overlap = 100
-    const chunks: string[] = []
+    // Section-aware chunking instead of raw character slicing
+    const chunks = chunkText(text, 700, 100)
 
-    let i = 0
-    while (i < text.length) {
-      chunks.push(text.slice(i, i + chunkSize))
-      i += chunkSize - overlap
-    }
-
-    // 👇 NEW: generate summary before saving (uses first 3 chunks)
     const summary = await generateSummary(chunks)
 
-    // Save document to Supabase
     const { data: doc, error: docError } = await supabaseAdmin
       .from('documents')
       .insert({
         name: file.name,
         session_id: sessionId,
-        summary: summary,   // 👈 NEW
+        summary: summary,
       })
       .select()
       .single()
 
     if (docError) throw docError
 
-    // Embed and save each chunk
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i]
       const embedding = await embedText(chunk)
@@ -121,7 +147,7 @@ export async function POST(req: NextRequest) {
       document: doc,
       chunksCreated: chunks.length,
       wordCount,
-      summary,   // 👈 NEW
+      summary,
     })
 
   } catch (err: any) {
