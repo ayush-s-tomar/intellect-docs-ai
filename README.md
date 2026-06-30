@@ -1,22 +1,28 @@
 # AskMyDocs — AI Document Q&A Tool
-> Upload any document and ask questions about it. The AI answers strictly from your document and shows exactly which part of the document the answer came from.
 
-🔗 **Live Demo:** https://intellect-docs-ai.vercel.app
+> Upload any document and ask questions about it in natural language. The AI answers strictly from your document and shows exactly which part of the document the answer came from — no hallucinations, full transparency.
+
+🔗 **Live Demo:** [intellect-docs-ai.vercel.app](https://intellect-docs-ai.vercel.app)
+
+![AskMyDocs Demo](./demo.png)
 
 ---
 
 ## What it does
+
 - 📄 Upload any `.txt` or `.pdf` document
 - ✅ Select it from the sidebar
 - 💬 Ask any question about it in natural language
 - 🤖 Get an AI-powered answer based strictly on your document
-- 🔍 See exactly which chunks of the document the answer came from
+- 🔍 See exactly which chunks of the document the answer came from, with match-relevance scores
+- 🧪 Built-in eval mode to sanity-check answer quality against source chunks
 - 🗑️ Delete documents when no longer needed
 - ⚡ Real-time streaming responses powered by Groq
 
 ---
 
 ## Tech Stack
+
 | Layer | Tech |
 |-------|------|
 | Frontend | Next.js 15, TypeScript, Tailwind CSS |
@@ -29,17 +35,19 @@
 ---
 
 ## How it works
+
 1. User uploads a document
 2. The backend splits it into chunks of ~500 characters
 3. Chunks are stored in Supabase with their index
-4. When a question is asked, the app searches for relevant chunks using full-text search
+4. When a question is asked, the app searches for relevant chunks using full-text search and ranks them by relevance
 5. The top matching chunks are sent to Groq AI as context
 6. Groq streams back an answer based strictly on those chunks
-7. The UI shows the answer + the source chunks it came from
+7. The UI shows the answer plus the source chunks it came from, with a match percentage for each
 
 ---
 
 ## Project Structure
+
 ```
 src/
 ├── app/
@@ -93,19 +101,21 @@ http://localhost:3000
 ---
 
 ## Deployment
+
 This project is deployed on **Vercel** — the official platform for Next.js apps.
 
 To deploy your own:
 1. Push the repo to GitHub
 2. Go to [vercel.com](https://vercel.com) → New Project → Import repo
-3. Add all 4 environment variables in Vercel dashboard
+3. Add all 4 environment variables in the Vercel dashboard
 4. Deploy — done in under 2 minutes
 
 ---
 
 ## What I Learned
+
 - Building full-stack AI applications with Next.js and TypeScript
-- Integrating streaming LLM responses with Groq API
+- Integrating streaming LLM responses with the Groq API
 - Document chunking and retrieval strategies for RAG systems
 - Working with Supabase for database and vector storage
 - Implementing rate limiting with Upstash Redis
@@ -115,6 +125,7 @@ To deploy your own:
 ---
 
 ## License
+
 MIT License — feel free to use and modify.
 
 ---
