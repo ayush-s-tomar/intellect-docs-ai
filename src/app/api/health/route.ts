@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 
 // Lightweight ping used by a scheduled GitHub Action to keep the
 // Supabase free-tier project from auto-pausing due to inactivity.

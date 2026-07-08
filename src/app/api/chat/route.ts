@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import Groq from 'groq-sdk'
 import { embedText } from '@/lib/embeddings'
 import { chatRatelimit } from '@/lib/ratelimit'
