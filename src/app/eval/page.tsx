@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useSessionId } from '@/hooks/useSessionId'
+import Link from 'next/link'
 
 interface EvalResult {
   topic: string
@@ -114,18 +115,18 @@ export default function EvalPage() {
                 Automatically test your pipeline quality with scored questions
               </p>
             </div>
-            <a
+            <Link
               href="/"
               className="text-xs text-slate-600 hover:text-emerald-400 transition-colors"
             >
               &larr; Back
-            </a>
+            </Link>
           </div>
         </div>
 
         <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 mb-6 text-xs text-slate-500 leading-relaxed">
           <p className="text-slate-400 font-semibold mb-1">How to use:</p>
-          <p>1. Upload a document on the <a href="/" className="text-emerald-400 hover:underline">main page</a></p>
+          <p>1. Upload a document on the <Link href="/" className="text-emerald-400 hover:underline">main page</Link></p>
           <p>2. Come back here and select it from the dropdown below</p>
           <p>3. Click Run Eval and wait ~30-60 seconds for results</p>
           <p className="mt-2 text-slate-600">
