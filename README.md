@@ -1,12 +1,33 @@
 # AskMyDocs — AI Document Q&A Tool
 
-> Upload any document and ask questions about it in natural language. The AI answers strictly from your document and shows exactly which part of the document the answer came from — no hallucinations, full transparency.
+<p align="center">
+  <a href="https://intellect-docs-ai.vercel.app"><img src="https://img.shields.io/badge/demo-live-brightgreen?style=for-the-badge" alt="Live Demo"/></a>
+  <img src="https://img.shields.io/github/deployments/ayush-s-tomar/intellect-docs-ai/production?style=for-the-badge&label=vercel" alt="Vercel Deployment"/>
+  <img src="https://img.shields.io/github/license/ayush-s-tomar/intellect-docs-ai?style=for-the-badge" alt="License"/>
+</p>
 
-🔗 **Live Demo:** [intellect-docs-ai.vercel.app](https://intellect-docs-ai.vercel.app)
+<p align="center">
+  <img src="https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js" alt="Next.js"/>
+  <img src="https://img.shields.io/badge/TypeScript-95%25-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript"/>
+  <img src="https://img.shields.io/badge/Supabase-pgvector-3ECF8E?style=flat-square&logo=supabase&logoColor=white" alt="Supabase"/>
+  <img src="https://img.shields.io/badge/Groq-LLaMA%203.1-F55036?style=flat-square" alt="Groq"/>
+  <img src="https://img.shields.io/badge/Cohere-embeddings-39594D?style=flat-square" alt="Cohere"/>
+  <img src="https://img.shields.io/badge/Upstash-Redis-00E9A3?style=flat-square&logo=redis&logoColor=white" alt="Upstash Redis"/>
+  <img src="https://img.shields.io/github/last-commit/ayush-s-tomar/intellect-docs-ai?style=flat-square" alt="Last Commit"/>
+  <img src="https://img.shields.io/github/stars/ayush-s-tomar/intellect-docs-ai?style=flat-square" alt="Stars"/>
+</p>
 
-![AskMyDocs Demo](./demo.png)
+Upload any document and ask questions about it in natural language. The AI answers strictly from your document and shows exactly which part of the document the answer came from — no hallucinations, full transparency.
 
----
+**🔗 Live Demo:** [intellect-docs-ai.vercel.app](https://intellect-docs-ai.vercel.app)
+
+<p align="center">
+  <img src="./demo.png" alt="AskMyDocs Demo Screenshot" width="800"/>
+</p>
+
+### 🎥 Demo Video
+
+PASTE_YOUR_GITHUB_ISSUE_VIDEO_URL_HERE
 
 ## What it does
 
@@ -21,21 +42,17 @@
 - 🗑️ Delete documents when no longer needed
 - ⚡ Real-time streaming responses powered by Groq
 
----
-
 ## Tech Stack
 
 | Layer | Tech |
-|-------|------|
+|---|---|
 | Frontend | Next.js 15, TypeScript, Tailwind CSS |
 | AI / LLM | Groq API (LLaMA 3.1 8B Instant) |
-| Embeddings | Cohere `embed-english-light-v3.0` (384-dim) |
+| Embeddings | Cohere embed-english-light-v3.0 (384-dim) |
 | Database | Supabase (PostgreSQL + pgvector) |
 | Retrieval | Supabase pgvector cosine similarity search |
 | Rate Limiting | Upstash Redis |
 | Deployment | Vercel |
-
----
 
 ## Architecture
 
@@ -67,8 +84,6 @@ chunks (+ embedding_v2)            │
 
 The eval pipeline (`/api/eval`) runs this same retrieval → generation path against a fixed question set, then a second Groq call scores each answer — letting retrieval and prompt changes be regression-tested instead of eyeballed.
 
----
-
 ## How it works
 
 1. User uploads a document
@@ -79,15 +94,14 @@ The eval pipeline (`/api/eval`) runs this same retrieval → generation path aga
 6. Groq streams back an answer based strictly on those chunks
 7. The UI shows the answer plus the source chunks it came from, with a similarity match percentage for each
 
----
-
 ## RAG Quality Evaluation
 
 AskMyDocs ships with a built-in evaluation harness (`/api/eval`, dashboard at `/eval`) that automatically tests retrieval and answer quality against a fixed question set — an actual quality gate for the RAG pipeline, not just a demo.
 
 For each test question, the eval pipeline:
+
 1. Embeds the question and retrieves the top 5 matching chunks via the same `match_chunks` pgvector search used in production
-2. Generates an answer from those chunks using Groq (`llama-3.1-8b-instant`)
+2. Generates an answer from those chunks using Groq (llama-3.1-8b-instant)
 3. **LLM-as-judge scoring** — a second Groq call grades the answer 0–10 on relevance, factual accuracy against the retrieved context, and clarity, returning a structured score and a one-line justification
 4. **Keyword validation** — checks the answer for expected keywords as a deterministic check alongside the LLM score
 5. Aggregates results into a summary: average score, pass/fail count (pass = score ≥ 6), pass rate, average chunks retrieved, and a letter grade (A–D)
@@ -96,15 +110,11 @@ This means changes to chunking, retrieval, or prompting can be regression-tested
 
 Test questions live in `src/lib/evalQuestions.ts` and are easy to extend with document-specific cases.
 
----
-
 ## Reliability & Production-Readiness
 
 - **Rate limiting** — Upstash Redis sliding-window limits protect the API on a free-tier deployment: 30 chat requests/minute and 20 uploads/hour per IP, tracked separately with analytics enabled.
 - **Health check + uptime automation** — `/api/health` pings Supabase and is hit on a schedule, keeping the free-tier Supabase project from auto-pausing due to inactivity.
 - **Separated Supabase clients** — a public client (anon key, respects Row Level Security) and an admin client (service role key, server-only) are exported separately, so a service-role secret can never accidentally ship to the browser bundle.
-
----
 
 ## Session & Multi-User Isolation
 
@@ -114,13 +124,9 @@ AskMyDocs supports multiple concurrent users without requiring login:
 - Every upload, fetch, and delete request is scoped server-side by `session_id` — `/api/documents` and `match_chunks` only ever return or modify data matching the caller's session, so users never see or delete each other's documents on a shared deployment.
 - This is a deliberate lightweight-auth tradeoff: zero signup friction for a demo/portfolio tool, while still enforcing real data isolation.
 
----
-
 ## Database Schema
 
-The full schema (pgvector extension, session-scoped columns, indexes, and the `match_chunks` similarity search function) lives in [`supabase/schema.sql`](./supabase/schema.sql) — a single source of truth instead of scattered migration history in the Supabase dashboard.
-
----
+The full schema (pgvector extension, session-scoped columns, indexes, and the `match_chunks` similarity search function) lives in `supabase/schema.sql` — a single source of truth instead of scattered migration history in the Supabase dashboard.
 
 ## Project Structure
 
@@ -148,22 +154,21 @@ supabase/
 └── schema.sql           # Full database schema
 ```
 
----
-
 ## How to run locally
 
-### 1. Clone the repo
+**1. Clone the repo**
 ```bash
 git clone https://github.com/ayush-s-tomar/intellect-docs-ai.git
 cd intellect-docs-ai
 ```
 
-### 2. Install dependencies
+**2. Install dependencies**
 ```bash
 npm install
 ```
 
-### 3. Set up environment variables
+**3. Set up environment variables**
+
 Create a `.env.local` file in the root folder:
 ```
 GROQ_API_KEY=your_groq_api_key
@@ -181,30 +186,28 @@ Get your keys from:
 - Supabase keys → [supabase.com](https://supabase.com) → your project → Settings → API
 - Upstash keys → [console.upstash.com](https://console.upstash.com) → your Redis database → REST API
 
-### 4. Set up the database
-Run [`supabase/schema.sql`](./supabase/schema.sql) in your Supabase SQL Editor.
+**4. Set up the database**
 
-### 5. Run the development server
+Run `supabase/schema.sql` in your Supabase SQL Editor.
+
+**5. Run the development server**
 ```bash
 npm run dev
 ```
 
-### 6. Open in browser
-http://localhost:3000
+**6. Open in browser**
 
----
+[http://localhost:3000](http://localhost:3000)
 
 ## Deployment
 
-This project is deployed on **Vercel** — the official platform for Next.js apps.
+This project is deployed on [Vercel](https://vercel.com) — the official platform for Next.js apps.
 
 To deploy your own:
 1. Push the repo to GitHub
-2. Go to [vercel.com](https://vercel.com) → New Project → Import repo
+2. Go to vercel.com → New Project → Import repo
 3. Add all environment variables in the Vercel dashboard
 4. Deploy — done in under 2 minutes
-
----
 
 ## What I Learned
 
@@ -218,12 +221,10 @@ To deploy your own:
 - Deploying Next.js apps on Vercel with environment management
 - Handling file uploads and text extraction in a serverless environment
 
----
-
 ## License
 
 MIT License — feel free to use and modify.
 
 ---
 
-Built by [Ayush Singh Tomar](https://github.com/ayush-s-tomar)
+Built by **Ayush Singh Tomar**
