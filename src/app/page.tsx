@@ -73,6 +73,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!sessionId) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchDocuments()
   }, [sessionId, fetchDocuments])
 
@@ -213,6 +214,7 @@ export default function Home() {
   const handleExportChat = () => {
     if (messages.length <= 1) return
 
+    // eslint-disable-next-line react-hooks/purity
     const timestamp = Date.now()
     const lines: string[] = []
     lines.push('AskMyDocs - Chat Export')
@@ -277,7 +279,7 @@ export default function Home() {
 
       const reader = res.body?.getReader()
       const decoder = new TextDecoder()
-      let assistantMsg: Message = { role: 'assistant', content: '', sources: [] }
+      const assistantMsg: Message = { role: 'assistant', content: '', sources: [] }
       setMessages(prev => [...prev, assistantMsg])
 
       while (reader) {
@@ -290,15 +292,15 @@ export default function Home() {
           if (raw === '[DONE]') break
           try {
             const parsed = JSON.parse(raw)
-            let updated = assistantMsg
-            if (parsed.sources) {
-              updated = { ...updated, sources: parsed.sources }
-            }
-            if (parsed.text) {
-              updated = { ...updated, content: updated.content + parsed.text }
-            }
-            assistantMsg = updated
-            setMessages(prev => [...prev.slice(0, -1), { ...assistantMsg }])
+            setMessages(prev => {
+              const last = prev[prev.length - 1]
+              const updated: Message = {
+                ...last,
+                sources: parsed.sources ?? last.sources,
+                content: parsed.text ? last.content + parsed.text : last.content,
+              }
+              return [...prev.slice(0, -1), updated]
+            })
           } catch {
             // ignore malformed SSE chunk
           }
@@ -331,7 +333,6 @@ export default function Home() {
   return (
     <div className="flex h-screen bg-[#0a0a0f] text-slate-100 font-mono overflow-hidden">
 
-      {/* Toast container */}
       <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full">
         {toasts.map(toast => (
           <div
