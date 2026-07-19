@@ -531,88 +531,96 @@ export default function Home() {
           </div>
         </header>
 
-        <section className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-          {messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-2xl w-full ${msg.role === 'user' ? 'flex justify-end' : ''}`}>
+        <section className="flex-1 overflow-y-auto px-6 py-6">
+          <div className="max-w-3xl mx-auto space-y-6">
+            {messages.map((msg, i) => (
+              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-2xl w-full ${msg.role === 'user' ? 'flex justify-end' : ''}`}>
 
-                <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${
-                  msg.role === 'user' ? 'text-right text-slate-600' : 'text-slate-600'
-                }`}>
-                  {msg.role === 'user' ? 'You' : 'AskMyDocs'}
-                </p>
+                  <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${
+                    msg.role === 'user' ? 'text-right text-slate-600' : 'text-slate-600'
+                  }`}>
+                    {msg.role === 'user' ? 'You' : 'AskMyDocs'}
+                  </p>
 
-                <div className={`px-5 py-4 rounded-xl text-sm leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'bg-slate-800 border border-slate-700/50 text-slate-200 inline-block'
-                    : 'bg-[#0d0d14] border border-slate-800/60 text-slate-300 w-full'
-                }`}>
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                  <div className={`px-5 py-4 rounded-xl text-sm leading-relaxed ${
+                    msg.role === 'user'
+                      ? 'bg-slate-800 border border-slate-700/50 text-slate-200 inline-block'
+                      : 'bg-[#0d0d14] border border-slate-800/60 text-slate-300 w-full'
+                  }`}>
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
 
-                  {msg.role === 'assistant' && msg.content && (
-                    <div className="mt-3 flex justify-end">
-                      <button
-                        onClick={() => handleCopy(msg.content, i)}
-                        className="text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-lg border transition-all border-slate-700 text-slate-500 hover:text-emerald-400 hover:border-emerald-500/30"
-                      >
-                        {copiedIndex === i ? '✓ Copied!' : 'Copy'}
-                      </button>
-                    </div>
-                  )}
+                    {msg.role === 'assistant' && msg.content && (
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          onClick={() => handleCopy(msg.content, i)}
+                          className="text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-lg border transition-all border-slate-700 text-slate-500 hover:text-emerald-400 hover:border-emerald-500/30"
+                        >
+                          {copiedIndex === i ? '✓ Copied!' : 'Copy'}
+                        </button>
+                      </div>
+                    )}
 
-                  {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-slate-800/60 space-y-2">
-                      <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-2">
-                        Sources ({msg.sources.length} chunks)
-                      </p>
-                      {msg.sources.map((src, si) => (
-                        <div key={si} className="rounded-lg border border-slate-800 overflow-hidden">
-                          <button
-                            onClick={() => setExpandedSource(expandedSource === si + i * 100 ? null : si + i * 100)}
-                            className="w-full flex items-center justify-between px-3 py-2 bg-slate-900/60 hover:bg-slate-900 transition-colors text-left"
-                          >
-                            <span className="text-[10px] text-emerald-400 uppercase tracking-wider flex items-center gap-2">
-                              Chunk {si + 1}
-                              {src.similarity && (
-                                <span className="text-slate-500 normal-case tracking-normal">
-                                  {src.similarity}% match
-                                </span>
-                              )}
-                            </span>
-                            <span className="text-[10px] text-slate-600">
-                              {expandedSource === si + i * 100 ? '▲ hide' : '▼ show'}
-                            </span>
-                          </button>
-                          {expandedSource === si + i * 100 && (
-                            <div className="px-3 py-2 bg-slate-950/60">
-                              <p className="text-[11px] text-slate-400 leading-relaxed">
-                                {src.content}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                    {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-slate-800/60 space-y-2">
+                        <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-2">
+                          Sources ({msg.sources.length} chunks)
+                        </p>
+                        {msg.sources.map((src, si) => (
+                          <div key={si} className="rounded-lg border border-slate-800 overflow-hidden">
+                            <button
+                              onClick={() => setExpandedSource(expandedSource === si + i * 100 ? null : si + i * 100)}
+                              className="w-full flex items-center justify-between px-3 py-2 bg-slate-900/60 hover:bg-slate-900 transition-colors text-left"
+                            >
+                              <span className="text-[10px] text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                                Chunk {si + 1}
+                                {src.similarity && (
+                                  <span className="flex items-center gap-1.5 normal-case tracking-normal">
+                                    <span className="w-12 h-1 bg-slate-800 rounded-full overflow-hidden">
+                                      <span
+                                        className="h-full bg-emerald-400 block"
+                                        style={{ width: `${Math.min(src.similarity, 100)}%` }}
+                                      />
+                                    </span>
+                                    <span className="text-slate-500">{src.similarity}%</span>
+                                  </span>
+                                )}
+                              </span>
+                              <span className="text-[10px] text-slate-600">
+                                {expandedSource === si + i * 100 ? '▲ hide' : '▼ show'}
+                              </span>
+                            </button>
+                            {expandedSource === si + i * 100 && (
+                              <div className="px-3 py-2 bg-slate-950/60">
+                                <p className="text-[11px] text-slate-400 leading-relaxed">
+                                  {src.content}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-              </div>
-            </div>
-          ))}
-
-          {loading && (
-            <div className="flex justify-start">
-              <div className="bg-[#0d0d14] border border-slate-800/60 rounded-xl px-5 py-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
               </div>
-            </div>
-          )}
+            ))}
 
-          <div ref={messagesEndRef} />
+            {loading && (
+              <div className="flex justify-start">
+                <div className="bg-[#0d0d14] border border-slate-800/60 rounded-xl px-5 py-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
         </section>
 
         <footer className="p-6 border-t border-slate-800/40 flex-shrink-0">
