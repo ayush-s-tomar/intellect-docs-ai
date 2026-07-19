@@ -114,7 +114,7 @@ export default function EvalPage() {
                 Automatically test your pipeline quality with scored questions
               </p>
             </div>
-            
+            <a
               href="/"
               className="text-xs text-slate-600 hover:text-emerald-400 transition-colors"
             >
