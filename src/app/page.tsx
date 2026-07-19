@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import Link from 'next/link'
 import { useSessionId } from '@/hooks/useSessionId'
 
 interface Message {
@@ -46,15 +47,6 @@ export default function Home() {
   const toastId = useRef(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!sessionId) return
-    fetchDocuments()
-  }, [sessionId])
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
-
   const showToast = (message: string, type: Toast['type'] = 'success', duration = 3000) => {
     const id = toastId.current++
     setToasts(prev => [...prev, { id, message, type }])
@@ -69,7 +61,7 @@ export default function Home() {
     setToasts(prev => prev.filter(t => t.id !== id))
   }
 
-  const fetchDocuments = async () => {
+  const fetchDocuments = useCallback(async () => {
     try {
       const res = await fetch(`/api/documents?session_id=${sessionId}`)
       const data = await res.json()
@@ -77,7 +69,16 @@ export default function Home() {
     } catch (err) {
       console.error('Failed to fetch documents:', err)
     }
-  }
+  }, [sessionId])
+
+  useEffect(() => {
+    if (!sessionId) return
+    fetchDocuments()
+  }, [sessionId, fetchDocuments])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   const extractPdfText = async (file: File): Promise<string> => {
     const pdfjsLib = await import('pdfjs-dist')
@@ -92,7 +93,9 @@ export default function Home() {
       setUploadProgress(`Reading page ${i} of ${pdf.numPages}...`)
       const page = await pdf.getPage(i)
       const content = await page.getTextContent()
-      const pageText = content.items.map((item: any) => item.str).join(' ')
+      const pageText = content.items
+        .map(item => ('str' in item ? item.str : ''))
+        .join(' ')
       fullText += pageText + '\n'
     }
 
@@ -210,6 +213,7 @@ export default function Home() {
   const handleExportChat = () => {
     if (messages.length <= 1) return
 
+    const timestamp = Date.now()
     const lines: string[] = []
     lines.push('AskMyDocs - Chat Export')
     lines.push('========================')
@@ -229,7 +233,7 @@ export default function Home() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `askmydocs-chat-${Date.now()}.txt`
+    a.download = `askmydocs-chat-${timestamp}.txt`
     a.click()
     URL.revokeObjectURL(url)
     showToast('Chat exported successfully', 'success', 2000)
@@ -286,17 +290,22 @@ export default function Home() {
           if (raw === '[DONE]') break
           try {
             const parsed = JSON.parse(raw)
+            let updated = assistantMsg
             if (parsed.sources) {
-              assistantMsg = { ...assistantMsg, sources: parsed.sources }
+              updated = { ...updated, sources: parsed.sources }
             }
             if (parsed.text) {
-              assistantMsg = { ...assistantMsg, content: assistantMsg.content + parsed.text }
+              updated = { ...updated, content: updated.content + parsed.text }
             }
+            assistantMsg = updated
             setMessages(prev => [...prev.slice(0, -1), { ...assistantMsg }])
-          } catch {}
+          } catch {
+            // ignore malformed SSE chunk
+          }
         }
       }
     } catch (err) {
+      console.error('Chat request failed:', err)
       setMessages(prev => [
         ...prev,
         { role: 'assistant', content: '❌ Something went wrong. Please try again.' },
@@ -518,12 +527,12 @@ export default function Home() {
                 Export Chat
               </button>
             )}
-            <a
+            <Link
               href="/eval"
               className="text-[10px] uppercase tracking-wider text-slate-600 hover:text-emerald-400 transition-colors"
             >
               Eval
-            </a>
+            </Link>
             <div className="flex items-center gap-2">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
               <span className="text-[10px] text-slate-500">Connected</span>

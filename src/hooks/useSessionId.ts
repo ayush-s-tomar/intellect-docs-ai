@@ -1,13 +1,13 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 function generateSessionId(): string {
   return crypto.randomUUID();
 }
 
 export function useSessionId(): string {
-  const [sessionId, setSessionId] = useState<string>("");
+  const [sessionId] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
 
-  useEffect(() => {
     let id = localStorage.getItem("askmydocs_session_id");
 
     if (!id) {
@@ -15,8 +15,8 @@ export function useSessionId(): string {
       localStorage.setItem("askmydocs_session_id", id);
     }
 
-    setSessionId(id);
-  }, []);
+    return id;
+  });
 
   return sessionId;
 }
