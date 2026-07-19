@@ -118,7 +118,7 @@ export default function EvalPage() {
               href="/"
               className="text-xs text-slate-600 hover:text-emerald-400 transition-colors"
             >
-              ← Back
+              &larr; Back
             </a>
           </div>
         </div>
@@ -262,7 +262,7 @@ export default function EvalPage() {
                 onClick={() => { setReport(null); setDocumentId('') }}
                 className="text-xs text-slate-600 hover:text-emerald-400 transition-colors"
               >
-                ← Run another eval
+                &larr; Run another eval
               </button>
             </div>
 
