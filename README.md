@@ -3,6 +3,7 @@
 <p align="center">
   <a href="https://intellect-docs-ai.vercel.app"><img src="https://img.shields.io/badge/demo-live-brightgreen?style=for-the-badge" alt="Live Demo"/></a>
   <img src="https://img.shields.io/github/deployments/ayush-s-tomar/intellect-docs-ai/production?style=for-the-badge&label=vercel" alt="Vercel Deployment"/>
+  <a href="https://github.com/ayush-s-tomar/intellect-docs-ai/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ayush-s-tomar/intellect-docs-ai/ci.yml?style=for-the-badge&label=CI" alt="CI"/></a>
   <img src="https://img.shields.io/github/license/ayush-s-tomar/intellect-docs-ai?style=for-the-badge" alt="License"/>
 </p>
 
@@ -115,6 +116,7 @@ Test questions live in `src/lib/evalQuestions.ts` and are easy to extend with do
 - **Rate limiting** — Upstash Redis sliding-window limits protect the API on a free-tier deployment: 30 chat requests/minute and 20 uploads/hour per IP, tracked separately with analytics enabled.
 - **Health check + uptime automation** — `/api/health` pings Supabase and is hit on a schedule, keeping the free-tier Supabase project from auto-pausing due to inactivity.
 - **Separated Supabase clients** — a public client (anon key, respects Row Level Security) and an admin client (service role key, server-only) are exported separately, so a service-role secret can never accidentally ship to the browser bundle.
+- **Continuous Integration** — every push runs an automated GitHub Actions workflow that lints, type-checks, and builds the project, catching errors before they reach production.
 
 ## Session & Multi-User Isolation
 
@@ -220,6 +222,7 @@ To deploy your own:
 - Implementing rate limiting with Upstash Redis
 - Deploying Next.js apps on Vercel with environment management
 - Handling file uploads and text extraction in a serverless environment
+- Setting up continuous integration with GitHub Actions to catch lint, type, and build errors before deployment
 
 ## License
 
