@@ -27,7 +27,7 @@ Upload any document and ask questions about it in natural language. The AI answe
 
 ### 🎥 Demo Video
 
-PASTE_YOUR_GITHUB_ISSUE_VIDEO_URL_HERE
+https://github.com/user-attachments/assets/8b9ae542-eeef-4067-810f-ab25cf3af470
 
 ## What it does
 
