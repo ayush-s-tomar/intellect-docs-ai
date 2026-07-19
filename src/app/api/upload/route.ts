@@ -33,11 +33,6 @@ async function generateSummary(chunks: string[]): Promise<string> {
   }
 }
 
-// Section-aware chunking: splits on blank-line paragraph/section boundaries
-// first, then only falls back to character slicing for any section that's
-// still too long. Keeps each chunk's text aligned with a single topic, so
-// vector similarity matches line up with the section that actually answers
-// the question, instead of cutting mid-section like raw character slicing did.
 function chunkText(text: string, maxChunkSize = 700, overlap = 100): string[] {
   const rawSections = text
     .split(/\n\s*\n/)
@@ -59,8 +54,6 @@ function chunkText(text: string, maxChunkSize = 700, overlap = 100): string[] {
     }
   }
 
-  // Merge very small chunks (e.g. lone heading lines) into the following
-  // chunk so headings stay attached to their content.
   const merged: string[] = []
   for (const chunk of chunks) {
     if (merged.length > 0 && merged[merged.length - 1].length < 80) {
@@ -110,7 +103,6 @@ export async function POST(req: NextRequest) {
 
     const wordCount = text.trim().split(/\s+/).filter(Boolean).length
 
-    // Section-aware chunking instead of raw character slicing
     const chunks = chunkText(text, 700, 100)
 
     const summary = await generateSummary(chunks)
@@ -150,8 +142,9 @@ export async function POST(req: NextRequest) {
       summary,
     })
 
-  } catch (err: any) {
+  } catch (err) {
     console.error('❌ UPLOAD ERROR:', err)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

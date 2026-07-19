@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 
-// Lightweight ping used by a scheduled GitHub Action to keep the
-// Supabase free-tier project from auto-pausing due to inactivity.
 export async function GET() {
   try {
     const { error } = await supabaseAdmin
@@ -16,10 +14,11 @@ export async function GET() {
       status: 'ok',
       checkedAt: new Date().toISOString(),
     })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('❌ HEALTH CHECK ERROR:', err)
+    const message = err instanceof Error ? err.message : 'Unknown error'
     return NextResponse.json(
-      { status: 'error', message: err.message },
+      { status: 'error', message },
       { status: 500 }
     )
   }

@@ -6,7 +6,12 @@ import { evalQuestions } from '@/lib/evalQuestions'
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
-// Uses Groq to score an answer from 0-10
+interface ChunkRow {
+  content: string
+  document_id: number
+  similarity?: number
+}
+
 async function scoreAnswer(
   question: string,
   answer: string,
@@ -67,10 +72,8 @@ export async function POST(req: NextRequest) {
     let totalChunksRetrieved = 0
 
     for (const evalQ of evalQuestions) {
-      // Step 1: embed the question
       const queryEmbedding = await embedText(evalQ.question)
 
-      // Step 2: retrieve relevant chunks (same as chat route)
       const { data: chunks } = await supabaseAdmin.rpc('match_chunks', {
         query_embedding: queryEmbedding,
         match_count: 5,
@@ -78,20 +81,19 @@ export async function POST(req: NextRequest) {
         filter_doc_ids: [docId],
       })
 
-      const finalChunks = chunks || []
+      const finalChunks = (chunks || []) as ChunkRow[]
       totalChunksRetrieved += finalChunks.length
 
-      const context = finalChunks.map((c: any) => c.content).join('\n\n')
+      const context = finalChunks.map((c: ChunkRow) => c.content).join('\n\n')
         || 'No context found.'
 
       const avgSimilarity = finalChunks.length > 0
         ? Math.round(
-            finalChunks.reduce((sum: number, c: any) => sum + (c.similarity || 0), 0)
+            finalChunks.reduce((sum: number, c: ChunkRow) => sum + (c.similarity || 0), 0)
             / finalChunks.length * 100
           )
         : 0
 
-      // Step 3: generate answer (non-streaming)
       const completion = await groq.chat.completions.create({
         model: 'llama-3.1-8b-instant',
         temperature: 0.2,
@@ -114,11 +116,9 @@ ${context}`
 
       const answer = completion.choices[0]?.message?.content?.trim() || ''
 
-      // Step 4: score the answer
       const { score, reason } = await scoreAnswer(evalQ.question, answer, context)
       totalScore += score
 
-      // Step 5: keyword check
       const answerLower = answer.toLowerCase()
       const keywordsPassed = evalQ.expectedKeywords.length === 0
         ? true
@@ -144,7 +144,7 @@ ${context}`
       summary: {
         totalQuestions: evalQuestions.length,
         averageScore: avgScore,
-        passed: passCount,          // score >= 6 counts as pass
+        passed: passCount,
         failed: evalQuestions.length - passCount,
         passRate: Math.round(passCount / evalQuestions.length * 100),
         avgChunksRetrieved: avgChunks,
@@ -153,8 +153,9 @@ ${context}`
       results,
     })
 
-  } catch (err: any) {
+  } catch (err) {
     console.error('❌ EVAL ERROR:', err)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

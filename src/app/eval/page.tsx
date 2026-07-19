@@ -37,12 +37,11 @@ interface Document {
 export default function EvalPage() {
   const sessionId = useSessionId()
   const [documentId, setDocumentId] = useState('')
-  const [documents, setDocuments] = useState<Document[]>([])  // 👈 NEW
+  const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(false)
   const [report, setReport] = useState<EvalResponse | null>(null)
   const [error, setError] = useState('')
 
-  // 👇 NEW: fetch documents automatically when session is ready
   useEffect(() => {
     if (!sessionId) return
     fetch(`/api/documents?session_id=${sessionId}`)
@@ -76,6 +75,7 @@ export default function EvalPage() {
         setReport(data)
       }
     } catch (err) {
+      console.error(err)
       setError('Eval failed. Check console for details.')
     } finally {
       setLoading(false)
@@ -100,7 +100,6 @@ export default function EvalPage() {
     <div className="min-h-screen bg-[#0a0a0f] text-slate-100 font-mono p-6">
       <div className="max-w-4xl mx-auto">
 
-        {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
@@ -115,8 +114,7 @@ export default function EvalPage() {
                 Automatically test your pipeline quality with scored questions
               </p>
             </div>
-            {/* 👇 Back link in header */}
-            <a
+            
               href="/"
               className="text-xs text-slate-600 hover:text-emerald-400 transition-colors"
             >
@@ -125,7 +123,6 @@ export default function EvalPage() {
           </div>
         </div>
 
-        {/* How to use — updated */}
         <div className="bg-slate-900/40 border border-slate-800 rounded-xl p-4 mb-6 text-xs text-slate-500 leading-relaxed">
           <p className="text-slate-400 font-semibold mb-1">How to use:</p>
           <p>1. Upload a document on the <a href="/" className="text-emerald-400 hover:underline">main page</a></p>
@@ -136,7 +133,6 @@ export default function EvalPage() {
           </p>
         </div>
 
-        {/* 👇 UPDATED: Dropdown instead of text input */}
         <div className="flex gap-3 mb-8">
           {documents.length === 0 ? (
             <div className="flex-1 bg-[#0d0d14] border border-slate-800 text-slate-600 rounded-xl px-4 py-3 text-sm">
@@ -169,7 +165,6 @@ export default function EvalPage() {
           </button>
         </div>
 
-        {/* Loading */}
         {loading && (
           <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-6 text-center mb-6">
             <div className="flex items-center justify-center gap-2 mb-2">
@@ -183,18 +178,15 @@ export default function EvalPage() {
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl px-4 py-3 text-sm mb-6">
             {error}
           </div>
         )}
 
-        {/* Report */}
         {report && (
           <div className="space-y-6">
 
-            {/* Summary cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4 text-center">
                 <p className={`text-3xl font-bold ${gradeColor(report.summary.grade)}`}>
@@ -225,7 +217,6 @@ export default function EvalPage() {
               </div>
             </div>
 
-            {/* Per-question results */}
             <div className="space-y-3">
               <p className="text-[10px] text-slate-600 uppercase tracking-widest">
                 Question Results
@@ -266,7 +257,6 @@ export default function EvalPage() {
               ))}
             </div>
 
-            {/* Run again button */}
             <div className="text-center pt-2">
               <button
                 onClick={() => { setReport(null); setDocumentId('') }}

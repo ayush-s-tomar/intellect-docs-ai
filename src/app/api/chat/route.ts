@@ -6,6 +6,12 @@ import { chatRatelimit } from '@/lib/ratelimit'
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
 
+interface ChunkRow {
+  content: string
+  document_id: number
+  similarity?: number
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { messages, selectedDocIds, session_id } = await req.json()
@@ -47,8 +53,9 @@ export async function POST(req: NextRequest) {
       console.error('❌ Vector search error:', vectorError)
     }
 
-    let finalChunks = chunks
-    if (!chunks || chunks.length === 0) {
+    let finalChunks: ChunkRow[] | null = chunks
+
+    if (!finalChunks || finalChunks.length === 0) {
       const { data: fallback } = await supabaseAdmin
         .from('chunks')
         .select('content, document_id')
@@ -58,10 +65,9 @@ export async function POST(req: NextRequest) {
       finalChunks = fallback
     }
 
-    const context = finalChunks?.map((c: any) => c.content).join('\n\n') || 'No context found.'
+    const context = finalChunks?.map((c: ChunkRow) => c.content).join('\n\n') || 'No context found.'
 
-    // 👇 FIXED: hide negative/zero similarity scores
-    const sources = (finalChunks || []).map((c: any) => ({
+    const sources = (finalChunks || []).map((c: ChunkRow) => ({
       content: c.content,
       document_id: c.document_id,
       similarity: (c.similarity && !isNaN(c.similarity) && c.similarity > 0)
@@ -107,8 +113,9 @@ ${context}`
       headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
     })
 
-  } catch (err: any) {
+  } catch (err) {
     console.error('❌ CHAT ERROR:', err)
-    return NextResponse.json({ error: err.message }, { status: 500 })
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
