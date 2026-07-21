@@ -3,6 +3,7 @@
 <p align="center">
   <a href="https://intellect-docs-ai.vercel.app"><img src="https://img.shields.io/badge/demo-live-brightgreen?style=for-the-badge" alt="Live Demo"/></a>
   <img src="https://img.shields.io/github/deployments/ayush-s-tomar/intellect-docs-ai/production?style=for-the-badge&label=vercel" alt="Vercel Deployment"/>
+  <a href="https://github.com/ayush-s-tomar/intellect-docs-ai/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ayush-s-tomar/intellect-docs-ai/ci.yml?style=for-the-badge&label=CI" alt="CI"/></a>
   <img src="https://img.shields.io/github/license/ayush-s-tomar/intellect-docs-ai?style=for-the-badge" alt="License"/>
 </p>
 
@@ -22,12 +23,18 @@ Upload any document and ask questions about it in natural language. The AI answe
 **🔗 Live Demo:** [intellect-docs-ai.vercel.app](https://intellect-docs-ai.vercel.app)
 
 <p align="center">
+  <img src="./assets/askmydocs-demo.gif" alt="AskMyDocs demo — upload a document, ask a question, get a cited answer, and view the eval dashboard" width="800"/>
+</p>
+
+<p align="center">
   <img src="./demo.png" alt="AskMyDocs Demo Screenshot" width="800"/>
 </p>
 
 ### 🎥 Demo Video
 
 https://github.com/user-attachments/assets/ae12af1b-3d89-4094-8c55-4f79a30ad8d7
+
+---
 
 ## What it does
 
@@ -42,6 +49,8 @@ https://github.com/user-attachments/assets/ae12af1b-3d89-4094-8c55-4f79a30ad8d7
 - 🗑️ Delete documents when no longer needed
 - ⚡ Real-time streaming responses powered by Groq
 
+---
+
 ## Tech Stack
 
 | Layer | Tech |
@@ -53,6 +62,8 @@ https://github.com/user-attachments/assets/ae12af1b-3d89-4094-8c55-4f79a30ad8d7
 | Retrieval | Supabase pgvector cosine similarity search |
 | Rate Limiting | Upstash Redis |
 | Deployment | Vercel |
+
+---
 
 ## Architecture
 
@@ -84,6 +95,8 @@ chunks (+ embedding_v2)            │
 
 The eval pipeline (`/api/eval`) runs this same retrieval → generation path against a fixed question set, then a second Groq call scores each answer — letting retrieval and prompt changes be regression-tested instead of eyeballed.
 
+---
+
 ## How it works
 
 1. User uploads a document
@@ -93,6 +106,8 @@ The eval pipeline (`/api/eval`) runs this same retrieval → generation path aga
 5. The top 5 matching chunks are sent to Groq as context
 6. Groq streams back an answer based strictly on those chunks
 7. The UI shows the answer plus the source chunks it came from, with a similarity match percentage for each
+
+---
 
 ## RAG Quality Evaluation
 
@@ -110,11 +125,16 @@ This means changes to chunking, retrieval, or prompting can be regression-tested
 
 Test questions live in `src/lib/evalQuestions.ts` and are easy to extend with document-specific cases.
 
+---
+
 ## Reliability & Production-Readiness
 
 - **Rate limiting** — Upstash Redis sliding-window limits protect the API on a free-tier deployment: 30 chat requests/minute and 20 uploads/hour per IP, tracked separately with analytics enabled.
 - **Health check + uptime automation** — `/api/health` pings Supabase and is hit on a schedule, keeping the free-tier Supabase project from auto-pausing due to inactivity.
 - **Separated Supabase clients** — a public client (anon key, respects Row Level Security) and an admin client (service role key, server-only) are exported separately, so a service-role secret can never accidentally ship to the browser bundle.
+- **Continuous Integration** — every push runs an automated GitHub Actions workflow that lints, type-checks, and builds the project, catching errors before they reach production.
+
+---
 
 ## Session & Multi-User Isolation
 
@@ -124,9 +144,13 @@ AskMyDocs supports multiple concurrent users without requiring login:
 - Every upload, fetch, and delete request is scoped server-side by `session_id` — `/api/documents` and `match_chunks` only ever return or modify data matching the caller's session, so users never see or delete each other's documents on a shared deployment.
 - This is a deliberate lightweight-auth tradeoff: zero signup friction for a demo/portfolio tool, while still enforcing real data isolation.
 
+---
+
 ## Database Schema
 
 The full schema (pgvector extension, session-scoped columns, indexes, and the `match_chunks` similarity search function) lives in `supabase/schema.sql` — a single source of truth instead of scattered migration history in the Supabase dashboard.
+
+---
 
 ## Project Structure
 
@@ -152,7 +176,11 @@ src/
     └── ratelimit.ts     # Upstash rate limiters
 supabase/
 └── schema.sql           # Full database schema
+assets/
+└── askmydocs-demo.gif   # README demo GIF
 ```
+
+---
 
 ## How to run locally
 
@@ -199,6 +227,8 @@ npm run dev
 
 [http://localhost:3000](http://localhost:3000)
 
+---
+
 ## Deployment
 
 This project is deployed on [Vercel](https://vercel.com) — the official platform for Next.js apps.
@@ -208,6 +238,8 @@ To deploy your own:
 2. Go to vercel.com → New Project → Import repo
 3. Add all environment variables in the Vercel dashboard
 4. Deploy — done in under 2 minutes
+
+---
 
 ## What I Learned
 
@@ -220,11 +252,26 @@ To deploy your own:
 - Implementing rate limiting with Upstash Redis
 - Deploying Next.js apps on Vercel with environment management
 - Handling file uploads and text extraction in a serverless environment
-
-## License
-
-MIT License — feel free to use and modify.
+- Setting up continuous integration with GitHub Actions to catch lint, type, and build errors before deployment
 
 ---
 
-Built by **Ayush Singh Tomar**
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/ayush-s-tomar/intellect-docs-ai/issues).
+
+1. Fork the project
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📄 License
+
+MIT License — feel free to use and modify. See [`LICENSE`](LICENSE) for more information.
+
+## 🙋 Author
+
+**Ayush Singh Tomar** — [GitHub](https://github.com/ayush-s-tomar)
+
+*Part of my AI developer portfolio — agents and models that do real, measurable work. See also: [SalesAgent](https://github.com/ayush-s-tomar/salesagent), an autonomous B2B lead-research and outreach agent, and [resume-screener-lora](https://github.com/ayush-s-tomar/resume-screener-lora), a LoRA fine-tuned resume screening model.*
