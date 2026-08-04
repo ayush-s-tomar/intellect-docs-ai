@@ -26,11 +26,7 @@ Upload any document and ask questions about it in natural language. The AI answe
   <img src="./assets/askmydocs-demo.gif" alt="AskMyDocs demo — upload a document, ask a question, get a cited answer, and view the eval dashboard" width="800"/>
 </p>
 
-<p align="center">
-  <img src="./demo.png" alt="AskMyDocs Demo Screenshot" width="800"/>
-</p>
-
-### 🎥 Demo Video
+### 🎥 Full Walkthrough
 
 https://github.com/user-attachments/assets/ae12af1b-3d89-4094-8c55-4f79a30ad8d7
 
@@ -38,16 +34,14 @@ https://github.com/user-attachments/assets/ae12af1b-3d89-4094-8c55-4f79a30ad8d7
 
 ## What it does
 
-- 📄 Upload any `.txt` or `.pdf` document
-- ✅ Select it from the sidebar
-- 💬 Ask any question about it in natural language
-- 🤖 Get an AI-powered answer based strictly on your document
-- 🔍 See exactly which chunks of the document the answer came from, with similarity scores
-- 🧪 Built-in eval mode to automatically grade retrieval and answer quality
-- 🔐 Anonymous, session-scoped multi-user support — no signup required
-- 🛡️ Rate-limited API with automated uptime keepalive
-- 🗑️ Delete documents when no longer needed
-- ⚡ Real-time streaming responses powered by Groq
+- Upload any `.txt` or `.pdf` document and select it from the sidebar
+- Ask any question about it in natural language
+- Get an answer generated strictly from your document — never from the model's general knowledge
+- See exactly which chunks the answer came from, with similarity match scores
+- Run built-in evals to automatically grade retrieval and answer quality
+- Anonymous, session-scoped multi-user support — no signup required
+- Rate-limited API with automated uptime keepalive
+- Real-time streaming responses via Groq
 
 ---
 
@@ -120,6 +114,8 @@ For each test question, the eval pipeline:
 3. **LLM-as-judge scoring** — a second Groq call grades the answer 0–10 on relevance, factual accuracy against the retrieved context, and clarity, returning a structured score and a one-line justification
 4. **Keyword validation** — checks the answer for expected keywords as a deterministic check alongside the LLM score
 5. Aggregates results into a summary: average score, pass/fail count (pass = score ≥ 6), pass rate, average chunks retrieved, and a letter grade (A–D)
+
+**Latest benchmark run:** 80% pass rate (4/5), average score 6.2/10, grade B — on the built-in test question set, pulled straight from the `/eval` dashboard so this number stays honest as the pipeline changes.
 
 This means changes to chunking, retrieval, or prompting can be regression-tested against a consistent benchmark instead of manually checking a few queries — the same practice used in production RAG systems before shipping pipeline changes.
 
@@ -241,36 +237,22 @@ To deploy your own:
 
 ---
 
-## What I Learned
+## Engineering Decisions & Key Challenges
 
-- Building full-stack AI applications with Next.js and TypeScript
-- Integrating streaming LLM responses with the Groq API
-- Document chunking and retrieval strategies for RAG systems, including diagnosing a chunk-size/embedding-truncation mismatch that was silently degrading retrieval accuracy
-- Building an automated, LLM-as-judge evaluation harness to regression-test RAG quality instead of manual spot-checking
-- Working with Supabase, pgvector, and proper public/admin client separation to avoid leaking service-role credentials
-- Implementing session-scoped multi-user isolation without requiring authentication
-- Implementing rate limiting with Upstash Redis
-- Deploying Next.js apps on Vercel with environment management
-- Handling file uploads and text extraction in a serverless environment
-- Setting up continuous integration with GitHub Actions to catch lint, type, and build errors before deployment
+- Diagnosed a chunk-size/embedding-truncation mismatch that was silently degrading retrieval accuracy — fixed by aligning chunk length to the embedding model's effective context.
+- Built an LLM-as-judge evaluation harness to regression-test RAG quality on every change, instead of manually spot-checking answers.
+- Separated public and admin Supabase clients so a service-role secret can never leak into the browser bundle.
+- Implemented session-scoped multi-user isolation without requiring authentication — zero signup friction while still enforcing real per-user data boundaries.
+- Added rate limiting (Upstash Redis) and an automated uptime keepalive to keep a free-tier deployment stable under real traffic.
+- Set up CI (lint, type-check, build) on every push so regressions are caught before they reach production.
 
 ---
 
-## 🤝 Contributing
+## License
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/ayush-s-tomar/intellect-docs-ai/issues).
+MIT License — see [`LICENSE`](LICENSE) for details.
 
-1. Fork the project
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-MIT License — feel free to use and modify. See [`LICENSE`](LICENSE) for more information.
-
-## 🙋 Author
+## Author
 
 **Ayush Singh Tomar** — [GitHub](https://github.com/ayush-s-tomar)
 
