@@ -1,15 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import Groq from 'groq-sdk'
-import { embedText } from '@/lib/embeddings'
+import { embedQuery } from '@/lib/embeddings'
 import { chatRatelimit } from '@/lib/ratelimit'
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+
+// How many prior turns (user+assistant pairs) to carry into context.
+// Bounded so token usage / latency stay predictable on long sessions —
+// older turns fall off rather than growing the prompt unboundedly.
+const MAX_HISTORY_MESSAGES = 6
 
 interface ChunkRow {
   content: string
   document_id: number
   similarity?: number
+  rrf_score?: number
+}
+
+interface IncomingMessage {
+  role: 'user' | 'assistant'
+  content: string
 }
 
 export async function POST(req: NextRequest) {
@@ -36,21 +47,27 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const queryEmbedding = await embedText(userQuery)
+    // Query embedding — asymmetric input_type ('search_query'), matching
+    // how chunks were embedded with 'search_document' at upload time.
+    const queryEmbedding = await embedQuery(userQuery)
 
     const docIds = selectedDocIds?.length
       ? selectedDocIds.map((id: string) => parseInt(id, 10))
       : [-1]
 
-    const { data: chunks, error: vectorError } = await supabaseAdmin.rpc('match_chunks', {
+    // Hybrid search: vector similarity + full-text search, fused with
+    // Reciprocal Rank Fusion (see supabase/schema.sql). Falls back to
+    // the same fallback path as before if the RPC errors or is empty.
+    const { data: chunks, error: hybridError } = await supabaseAdmin.rpc('hybrid_search_chunks', {
+      query_text: userQuery,
       query_embedding: queryEmbedding,
       match_count: 5,
       filter_session_id: session_id,
       filter_doc_ids: docIds,
     })
 
-    if (vectorError) {
-      console.error('❌ Vector search error:', vectorError)
+    if (hybridError) {
+      console.error('❌ Hybrid search error:', hybridError)
     }
 
     let finalChunks: ChunkRow[] | null = chunks
@@ -75,14 +92,25 @@ export async function POST(req: NextRequest) {
         : null,
     }))
 
+    // Multi-turn memory: carry the last few turns of conversation into
+    // the prompt, not just the current question. Previously only the
+    // final user message was ever sent to Groq, so follow-ups like
+    // "what about the second one?" had no prior context to resolve
+    // against. History is trimmed to MAX_HISTORY_MESSAGES and excludes
+    // the current message (added separately below with fresh context).
+    const priorHistory: IncomingMessage[] = (messages as IncomingMessage[])
+      .slice(0, -1)
+      .slice(-MAX_HISTORY_MESSAGES)
+
     const fullMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
       {
         role: 'system',
-        content: `You are a helpful assistant. Answer the user's question using ONLY the following context from their uploaded document. Always mention where in the document you found the answer.
+        content: `You are a helpful assistant. Answer the user's question using ONLY the following context from their uploaded document(s). Always mention where in the document you found the answer. Use the prior conversation only to resolve references (e.g. "it", "the second one") — the CONTEXT below is the sole source of truth for facts.
 
 CONTEXT:
 ${context}`
       },
+      ...priorHistory.map(m => ({ role: m.role, content: m.content })),
       {
         role: 'user',
         content: userQuery
