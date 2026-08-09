@@ -47,6 +47,12 @@ export default function Home() {
   const toastId = useRef(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
+  // Conversation has real back-and-forth once there's at least one
+  // user message and one assistant reply beyond the welcome message —
+  // that's when multi-turn memory (chat/route.ts) actually kicks in.
+  const hasConversationHistory = messages.filter(m => m.role === 'user').length >= 1
+    && messages.filter(m => m.role === 'assistant').length >= 2
+
   const showToast = (message: string, type: Toast['type'] = 'success', duration = 3000) => {
     const id = toastId.current++
     setToasts(prev => [...prev, { id, message, type }])
@@ -380,6 +386,11 @@ export default function Home() {
             </button>
           </div>
           <p className="text-[10px] text-slate-500 mt-1 tracking-wider">RAG · Groq · Supabase</p>
+          <div className="flex items-center gap-1.5 mt-2">
+            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full tracking-wider">
+              Hybrid Search
+            </span>
+          </div>
         </div>
 
         <div className="p-4 border-b border-slate-800/40">
@@ -517,6 +528,14 @@ export default function Home() {
                 {selectedDocIds.length} doc{selectedDocIds.length > 1 ? 's' : ''} active
               </span>
             )}
+            {hasConversationHistory && (
+              <span className="text-[10px] bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8-1.17 0-2.29-.2-3.31-.56L3 21l1.56-4.69C3.57 15.02 3 13.56 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                Remembers context
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-4">
@@ -574,7 +593,7 @@ export default function Home() {
                     {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
                       <div className="mt-4 pt-4 border-t border-slate-800/60 space-y-2">
                         <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-2">
-                          Sources ({msg.sources.length} chunks)
+                          Sources ({msg.sources.length} chunks · hybrid search)
                         </p>
                         {msg.sources.map((src, si) => (
                           <div key={si} className="rounded-lg border border-slate-800 overflow-hidden">
@@ -653,6 +672,7 @@ export default function Home() {
           </form>
           <p className="text-center text-[10px] text-slate-700 mt-3 tracking-wider">
             Answers grounded strictly in your uploaded documents
+            {hasConversationHistory && ' · remembers recent conversation'}
           </p>
         </footer>
       </main>
