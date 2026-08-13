@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect } from 'react'
 import { useSessionId } from '@/hooks/useSessionId'
@@ -25,10 +25,14 @@ interface EvalSummary {
   grade: string
 }
 
-interface EvalResponse {
+interface EvalData {
   summary: EvalSummary
   results: EvalResult[]
 }
+
+type EvalApiResponse =
+  | { success: true; data: EvalData }
+  | { success: false; error: string; code: string }
 
 interface Document {
   id: string
@@ -40,7 +44,7 @@ export default function EvalPage() {
   const [documentId, setDocumentId] = useState('')
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(false)
-  const [report, setReport] = useState<EvalResponse | null>(null)
+  const [report, setReport] = useState<EvalData | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -69,11 +73,11 @@ export default function EvalPage() {
           document_id: documentId.trim(),
         }),
       })
-      const data = await res.json()
-      if (data.error) {
+      const data: EvalApiResponse = await res.json()
+      if (!data.success) {
         setError(data.error)
       } else {
-        setReport(data)
+        setReport(data.data)
       }
     } catch (err) {
       console.error(err)
@@ -174,7 +178,7 @@ export default function EvalPage() {
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
             <p className="text-xs text-slate-500">
-              Running 5 eval questions... this takes ~30-60 seconds
+              Running eval questions... this takes ~30-60 seconds
             </p>
           </div>
         )}
