@@ -15,4 +15,4 @@ __pycache__/
 .vscode/
 
 # Mac
-.DS_Store
+.DS_Storenext-env.d.ts
