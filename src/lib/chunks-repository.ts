@@ -1,4 +1,5 @@
 ﻿import { supabaseAdmin } from '@/lib/supabase-admin'
+import { logger } from '@/lib/logger'
 
 export interface ChunkResult {
   content: string
@@ -27,13 +28,14 @@ export async function searchChunksHybrid(params: SearchParams): Promise<ChunkRes
   })
 
   if (error) {
-    console.error('❌ [chunks-repository] Hybrid search error:', error)
+    logger.error('chunks-repository', 'Hybrid search RPC failed', { error: error.message, sessionId })
   }
 
   if (chunks && chunks.length > 0) {
     return chunks as ChunkResult[]
   }
 
+  logger.warn('chunks-repository', 'Hybrid search returned no results, falling back', { sessionId, docIds })
   return fallbackFetchChunks(sessionId, docIds, matchCount)
 }
 
@@ -48,7 +50,7 @@ export async function searchChunksVectorOnly(params: Omit<SearchParams, 'queryTe
   })
 
   if (error) {
-    console.error('❌ [chunks-repository] Vector search error:', error)
+    logger.error('chunks-repository', 'Vector search RPC failed', { error: error.message, sessionId })
   }
 
   return (chunks || []) as ChunkResult[]
@@ -67,7 +69,7 @@ async function fallbackFetchChunks(
     .limit(limit)
 
   if (error) {
-    console.error('❌ [chunks-repository] Fallback fetch error:', error)
+    logger.error('chunks-repository', 'Fallback fetch failed', { error: error.message, sessionId })
     return []
   }
 

@@ -1,4 +1,5 @@
 ﻿import { NextResponse } from 'next/server'
+import { logger } from '@/lib/logger'
 
 export type ApiSuccess<T> = {
   success: true
@@ -52,9 +53,12 @@ export class ApiHandledError extends Error {
 
 export function handleApiError(err: unknown, routeName: string) {
   if (err instanceof ApiHandledError) {
+    logger.warn(routeName, err.message, { code: err.code })
     return apiError(err.code, err.message)
   }
-  console.error(`❌ [${routeName}] Unhandled error:`, err)
+
   const message = err instanceof Error ? err.message : 'Unknown error'
+  const stack = err instanceof Error ? err.stack : undefined
+  logger.error(routeName, `Unhandled error: ${message}`, { stack })
   return apiError('INTERNAL_ERROR', `Something went wrong: ${message}`)
 }

@@ -1,10 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { embedText } from '@/lib/embeddings'
+import { chunkText } from '@/lib/chunker'
 import { uploadRatelimit } from '@/lib/ratelimit'
+import { uploadFieldsSchema } from '@/lib/validation'
+import { env } from '@/lib/env'
+import { apiSuccess, apiError, handleApiError } from '@/lib/api-response'
+import { logger } from '@/lib/logger'
 import Groq from 'groq-sdk'
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
+const groq = new Groq({ apiKey: env.GROQ_API_KEY })
 
 async function generateSummary(chunks: string[]): Promise<string> {
   try {
@@ -28,57 +33,28 @@ async function generateSummary(chunks: string[]): Promise<string> {
 
     return completion.choices[0]?.message?.content?.trim() || ''
   } catch (err) {
-    console.error('Summary generation failed:', err)
+    logger.warn('upload', 'Summary generation failed', {
+      error: err instanceof Error ? err.message : 'unknown',
+    })
     return ''
   }
-}
-
-function chunkText(text: string, maxChunkSize = 700, overlap = 100): string[] {
-  const rawSections = text
-    .split(/\n\s*\n/)
-    .map(s => s.trim())
-    .filter(Boolean)
-
-  const chunks: string[] = []
-
-  for (const section of rawSections) {
-    if (section.length <= maxChunkSize) {
-      chunks.push(section)
-      continue
-    }
-
-    let i = 0
-    while (i < section.length) {
-      chunks.push(section.slice(i, i + maxChunkSize))
-      i += maxChunkSize - overlap
-    }
-  }
-
-  const merged: string[] = []
-  for (const chunk of chunks) {
-    if (merged.length > 0 && merged[merged.length - 1].length < 80) {
-      merged[merged.length - 1] = merged[merged.length - 1] + '\n\n' + chunk
-    } else {
-      merged.push(chunk)
-    }
-  }
-
-  return merged
 }
 
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File
-    const sessionId = formData.get('session_id') as string
+    const rawSessionId = formData.get('session_id') as string
 
     if (!file) {
-      return NextResponse.json({ error: 'No file uploaded' }, { status: 400 })
+      return apiError('VALIDATION_ERROR', 'No file uploaded')
     }
 
-    if (!sessionId) {
-      return NextResponse.json({ error: 'No session ID provided' }, { status: 400 })
+    const parseResult = uploadFieldsSchema.safeParse({ session_id: rawSessionId })
+    if (!parseResult.success) {
+      return apiError('VALIDATION_ERROR', 'No session ID provided')
     }
+    const { session_id: sessionId } = parseResult.data
 
     const ip = req.headers.get('x-forwarded-for') ??
                req.headers.get('x-real-ip') ??
@@ -87,23 +63,17 @@ export async function POST(req: NextRequest) {
     const { success } = await uploadRatelimit.limit(ip)
 
     if (!success) {
-      return NextResponse.json(
-        { error: 'Upload limit reached. You can upload up to 5 documents per hour.' },
-        { status: 429 }
-      )
+      return apiError('RATE_LIMITED', 'Upload limit reached. You can upload up to 5 documents per hour.')
     }
 
     if (file.type === 'application/pdf') {
-      return NextResponse.json({
-        error: 'Please convert your PDF to a .txt file and upload that instead.'
-      }, { status: 400 })
+      return apiError('VALIDATION_ERROR', 'Please convert your PDF to a .txt file and upload that instead.')
     }
 
     const text = await file.text()
-
     const wordCount = text.trim().split(/\s+/).filter(Boolean).length
 
-    const chunks = chunkText(text, 700, 100)
+    const chunks = chunkText(text)
 
     const summary = await generateSummary(chunks)
 
@@ -117,7 +87,10 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (docError) throw docError
+    if (docError) {
+      logger.error('upload', 'Document insert failed', { error: docError.message, sessionId })
+      throw docError
+    }
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i]
@@ -131,11 +104,20 @@ export async function POST(req: NextRequest) {
           chunk_index: i,
           session_id: sessionId,
         })
-      if (chunkError) throw chunkError
+      if (chunkError) {
+        logger.error('upload', 'Chunk insert failed', { error: chunkError.message, sessionId, chunkIndex: i })
+        throw chunkError
+      }
     }
 
-    return NextResponse.json({
-      success: true,
+    logger.info('upload', 'Document uploaded successfully', {
+      sessionId,
+      documentId: doc.id,
+      chunksCreated: chunks.length,
+      wordCount,
+    })
+
+    return apiSuccess({
       document: doc,
       chunksCreated: chunks.length,
       wordCount,
@@ -143,8 +125,6 @@ export async function POST(req: NextRequest) {
     })
 
   } catch (err) {
-    console.error('❌ UPLOAD ERROR:', err)
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return handleApiError(err, 'upload')
   }
 }
