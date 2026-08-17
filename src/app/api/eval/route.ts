@@ -1,16 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase-admin'
-import { embedText } from '@/lib/embeddings'
+﻿import { NextRequest } from 'next/server'
 import Groq from 'groq-sdk'
 import { evalQuestions } from '@/lib/evalQuestions'
+import { evalRequestSchema, formatZodError } from '@/lib/validation'
+import { env } from '@/lib/env'
+import { apiSuccess, apiError, handleApiError } from '@/lib/api-response'
+import { embedText } from '@/lib/embeddings'
+import { searchChunksVectorOnly, chunksToContext } from '@/lib/chunks-repository'
+import { RETRIEVAL } from '@/lib/config'
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
-
-interface ChunkRow {
-  content: string
-  document_id: number
-  similarity?: number
-}
+const groq = new Groq({ apiKey: env.GROQ_API_KEY })
 
 async function scoreAnswer(
   question: string,
@@ -57,16 +55,19 @@ Score this answer:`
 
 export async function POST(req: NextRequest) {
   try {
-    const { session_id, document_id } = await req.json()
+    const rawBody = await req.json()
 
-    if (!session_id || !document_id) {
-      return NextResponse.json(
-        { error: 'session_id and document_id are required' },
-        { status: 400 }
-      )
+    const parseResult = evalRequestSchema.safeParse(rawBody)
+    if (!parseResult.success) {
+      return apiError('VALIDATION_ERROR', formatZodError(parseResult.error))
     }
+    const { session_id, document_id } = parseResult.data
 
     const docId = parseInt(document_id, 10)
+    if (isNaN(docId)) {
+      return apiError('VALIDATION_ERROR', 'document_id must be a valid number')
+    }
+
     const results = []
     let totalScore = 0
     let totalChunksRetrieved = 0
@@ -74,22 +75,19 @@ export async function POST(req: NextRequest) {
     for (const evalQ of evalQuestions) {
       const queryEmbedding = await embedText(evalQ.question)
 
-      const { data: chunks } = await supabaseAdmin.rpc('match_chunks', {
-        query_embedding: queryEmbedding,
-        match_count: 5,
-        filter_session_id: session_id,
-        filter_doc_ids: [docId],
+      const finalChunks = await searchChunksVectorOnly({
+        queryEmbedding,
+        matchCount: RETRIEVAL.MATCH_COUNT,
+        sessionId: session_id,
+        docIds: [docId],
       })
 
-      const finalChunks = (chunks || []) as ChunkRow[]
       totalChunksRetrieved += finalChunks.length
-
-      const context = finalChunks.map((c: ChunkRow) => c.content).join('\n\n')
-        || 'No context found.'
+      const context = chunksToContext(finalChunks)
 
       const avgSimilarity = finalChunks.length > 0
         ? Math.round(
-            finalChunks.reduce((sum: number, c: ChunkRow) => sum + (c.similarity || 0), 0)
+            finalChunks.reduce((sum, c) => sum + (c.similarity || 0), 0)
             / finalChunks.length * 100
           )
         : 0
@@ -140,7 +138,7 @@ ${context}`
     const avgChunks = Math.round(totalChunksRetrieved / evalQuestions.length * 10) / 10
     const passCount = results.filter(r => r.score >= 6).length
 
-    return NextResponse.json({
+    return apiSuccess({
       summary: {
         totalQuestions: evalQuestions.length,
         averageScore: avgScore,
@@ -154,8 +152,6 @@ ${context}`
     })
 
   } catch (err) {
-    console.error('❌ EVAL ERROR:', err)
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return handleApiError(err, 'eval')
   }
 }

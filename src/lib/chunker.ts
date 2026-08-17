@@ -1,8 +1,10 @@
+﻿import { CHUNKING } from '@/lib/config'
+
 export function chunkText(
   text: string,
-  chunkSize = 800,
-  overlap = 150,
-  minChunkLength = 40
+  chunkSize: number = CHUNKING.CHUNK_SIZE,
+  overlap: number = CHUNKING.OVERLAP,
+  minChunkLength: number = CHUNKING.MIN_CHUNK_LENGTH
 ): string[] {
   const sentences = text
     .replace(/\r\n/g, '\n')
@@ -27,13 +29,6 @@ export function chunkText(
   }
   if (current.trim()) rawChunks.push(current.trim())
 
-  // Guard against short trailing fragments (e.g. a lone "See Table 3.")
-  // becoming their own chunk. These produce weak, near-random vector
-  // embeddings and a near-empty full-text tsvector, so they add noise
-  // to both retrieval paths in hybrid search without adding signal.
-  // Merge any undersized chunk into the previous one instead of
-  // dropping it outright — no content is lost, it just isn't split
-  // into a standalone low-quality chunk.
   const chunks: string[] = []
   for (const chunk of rawChunks) {
     if (chunk.length < minChunkLength && chunks.length > 0) {

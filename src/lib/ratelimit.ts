@@ -1,6 +1,7 @@
 ﻿import { Ratelimit } from '@upstash/ratelimit'
 import { Redis } from '@upstash/redis'
 import { env } from '@/lib/env'
+import { RATE_LIMIT } from '@/lib/config'
 
 const redis = new Redis({
   url: env.UPSTASH_REDIS_REST_URL,
@@ -9,14 +10,14 @@ const redis = new Redis({
 
 export const chatRatelimit = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(30, '1 m'),
+  limiter: Ratelimit.slidingWindow(RATE_LIMIT.CHAT.MAX_REQUESTS, RATE_LIMIT.CHAT.WINDOW),
   analytics: true,
   prefix: 'askmydocs:chat',
 })
 
 export const uploadRatelimit = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(20, '60 m'),
+  limiter: Ratelimit.slidingWindow(RATE_LIMIT.UPLOAD.MAX_REQUESTS, RATE_LIMIT.UPLOAD.WINDOW),
   analytics: true,
   prefix: 'askmydocs:upload',
 })

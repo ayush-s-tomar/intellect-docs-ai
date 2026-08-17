@@ -1,31 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase-admin'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
 import { embedQuery } from '@/lib/embeddings'
 import { chatRatelimit } from '@/lib/ratelimit'
+import { chatRequestSchema, formatZodError } from '@/lib/validation'
+import { env } from '@/lib/env'
+import { apiError, handleApiError, ApiHandledError } from '@/lib/api-response'
+import { searchChunksHybrid, chunksToContext, chunksToSources } from '@/lib/chunks-repository'
+import { CHAT, RETRIEVAL } from '@/lib/config'
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY })
-
-// How many prior turns (user+assistant pairs) to carry into context.
-// Bounded so token usage / latency stay predictable on long sessions —
-// older turns fall off rather than growing the prompt unboundedly.
-const MAX_HISTORY_MESSAGES = 6
-
-interface ChunkRow {
-  content: string
-  document_id: number
-  similarity?: number
-  rrf_score?: number
-}
-
-interface IncomingMessage {
-  role: 'user' | 'assistant'
-  content: string
-}
+const groq = new Groq({ apiKey: env.GROQ_API_KEY })
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, selectedDocIds, session_id } = await req.json()
+    const rawBody = await req.json()
+
+    const parseResult = chatRequestSchema.safeParse(rawBody)
+    if (!parseResult.success) {
+      return apiError('VALIDATION_ERROR', formatZodError(parseResult.error))
+    }
+    const { messages, selectedDocIds, session_id } = parseResult.data
     const userQuery = messages[messages.length - 1].content
 
     const ip = req.headers.get('x-forwarded-for') ??
@@ -35,72 +28,34 @@ export async function POST(req: NextRequest) {
     const { success, limit, remaining } = await chatRatelimit.limit(ip)
 
     if (!success) {
-      return NextResponse.json(
-        { error: 'Too many requests. Please wait a minute before asking again.' },
+      return apiError(
+        'RATE_LIMITED',
+        'Too many requests. Please wait a minute before asking again.',
         {
-          status: 429,
-          headers: {
-            'X-RateLimit-Limit': limit.toString(),
-            'X-RateLimit-Remaining': remaining.toString(),
-          }
+          'X-RateLimit-Limit': limit.toString(),
+          'X-RateLimit-Remaining': remaining.toString(),
         }
       )
     }
 
-    // Query embedding — asymmetric input_type ('search_query'), matching
-    // how chunks were embedded with 'search_document' at upload time.
     const queryEmbedding = await embedQuery(userQuery)
 
-    const docIds = selectedDocIds?.length
+    const docIds = selectedDocIds.length
       ? selectedDocIds.map((id: string) => parseInt(id, 10))
       : [-1]
 
-    // Hybrid search: vector similarity + full-text search, fused with
-    // Reciprocal Rank Fusion (see supabase/schema.sql). Falls back to
-    // the same fallback path as before if the RPC errors or is empty.
-    const { data: chunks, error: hybridError } = await supabaseAdmin.rpc('hybrid_search_chunks', {
-      query_text: userQuery,
-      query_embedding: queryEmbedding,
-      match_count: 5,
-      filter_session_id: session_id,
-      filter_doc_ids: docIds,
+    const finalChunks = await searchChunksHybrid({
+      queryText: userQuery,
+      queryEmbedding,
+      matchCount: RETRIEVAL.MATCH_COUNT,
+      sessionId: session_id,
+      docIds,
     })
 
-    if (hybridError) {
-      console.error('❌ Hybrid search error:', hybridError)
-    }
+    const context = chunksToContext(finalChunks)
+    const sources = chunksToSources(finalChunks)
 
-    let finalChunks: ChunkRow[] | null = chunks
-
-    if (!finalChunks || finalChunks.length === 0) {
-      const { data: fallback } = await supabaseAdmin
-        .from('chunks')
-        .select('content, document_id')
-        .in('document_id', selectedDocIds?.length ? selectedDocIds : [''])
-        .eq('session_id', session_id)
-        .limit(5)
-      finalChunks = fallback
-    }
-
-    const context = finalChunks?.map((c: ChunkRow) => c.content).join('\n\n') || 'No context found.'
-
-    const sources = (finalChunks || []).map((c: ChunkRow) => ({
-      content: c.content,
-      document_id: c.document_id,
-      similarity: (c.similarity && !isNaN(c.similarity) && c.similarity > 0)
-        ? Math.round(c.similarity * 100)
-        : null,
-    }))
-
-    // Multi-turn memory: carry the last few turns of conversation into
-    // the prompt, not just the current question. Previously only the
-    // final user message was ever sent to Groq, so follow-ups like
-    // "what about the second one?" had no prior context to resolve
-    // against. History is trimmed to MAX_HISTORY_MESSAGES and excludes
-    // the current message (added separately below with fresh context).
-    const priorHistory: IncomingMessage[] = (messages as IncomingMessage[])
-      .slice(0, -1)
-      .slice(-MAX_HISTORY_MESSAGES)
+    const priorHistory = messages.slice(0, -1).slice(-CHAT.MAX_HISTORY_MESSAGES)
 
     const fullMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
       {
@@ -117,12 +72,17 @@ ${context}`
       }
     ]
 
-    const stream = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
-      stream: true,
-      temperature: 0.2,
-      messages: fullMessages,
-    })
+    let stream
+    try {
+      stream = await groq.chat.completions.create({
+        model: 'llama-3.1-8b-instant',
+        stream: true,
+        temperature: 0.2,
+        messages: fullMessages,
+      })
+    } catch (err) {
+      throw new ApiHandledError('UPSTREAM_ERROR', `Groq request failed: ${err instanceof Error ? err.message : 'unknown error'}`)
+    }
 
     const encoder = new TextEncoder()
     const readable = new ReadableStream({
@@ -142,8 +102,6 @@ ${context}`
     })
 
   } catch (err) {
-    console.error('❌ CHAT ERROR:', err)
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    return NextResponse.json({ error: message }, { status: 500 })
+    return handleApiError(err, 'chat')
   }
 }
