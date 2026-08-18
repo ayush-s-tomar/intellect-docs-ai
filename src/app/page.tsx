@@ -1,8 +1,9 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useSessionId } from '@/hooks/useSessionId'
+import { UPLOAD } from '@/lib/config'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -24,6 +25,12 @@ interface Toast {
   message: string
   type: 'success' | 'error' | 'warning'
 }
+
+// Matches lib/api-response.ts — success responses are
+// { success: true, data: T }, errors are { success: false, error, code }.
+type ApiResponse<T> =
+  | { success: true; data: T }
+  | { success: false; error: string; code: string }
 
 export default function Home() {
   const sessionId = useSessionId()
@@ -70,10 +77,16 @@ export default function Home() {
   const fetchDocuments = useCallback(async () => {
     try {
       const res = await fetch(`/api/documents?session_id=${sessionId}`)
-      const data = await res.json()
-      setDocuments(data)
+      const data: ApiResponse<Document[]> = await res.json()
+      if (data.success) {
+        setDocuments(data.data)
+      } else {
+        console.error('Failed to fetch documents:', data.error)
+        setDocuments([])
+      }
     } catch (err) {
       console.error('Failed to fetch documents:', err)
+      setDocuments([])
     }
   }, [sessionId])
 
@@ -113,7 +126,7 @@ export default function Home() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > UPLOAD.MAX_FILE_SIZE_BYTES) {
       showToast('File too large. Please upload a file under 5MB.', 'error', 5000)
       e.target.value = ''
       return
@@ -151,18 +164,25 @@ export default function Home() {
         body: formData,
       })
 
-      const data = await res.json()
+      interface UploadData {
+        document: Document
+        chunksCreated: number
+        wordCount: number
+        summary: string
+      }
+
+      const data: ApiResponse<UploadData> = await res.json()
       if (data.success) {
         await fetchDocuments()
-        setSelectedDocIds(prev => [...prev, data.document.id])
+        setSelectedDocIds(prev => [...prev, data.data.document.id])
         setDocuments(prev => prev.map(d =>
-          d.id === data.document.id
-            ? { ...d, word_count: data.wordCount, chunk_count: data.chunksCreated, summary: data.summary }
+          d.id === data.data.document.id
+            ? { ...d, word_count: data.data.wordCount, chunk_count: data.data.chunksCreated, summary: data.data.summary }
             : d
         ))
-        showToast(`✓ "${file.name}" uploaded — ${data.chunksCreated} chunks indexed`, 'success')
+        showToast(`✓ "${file.name}" uploaded — ${data.data.chunksCreated} chunks indexed`, 'success')
       } else {
-        if (data.error?.includes('limit')) {
+        if (data.code === 'RATE_LIMITED') {
           showToast('Upload limit reached. Max 5 uploads per hour.', 'warning', 5000)
         } else {
           showToast('Upload failed: ' + data.error, 'error', 5000)
@@ -197,11 +217,16 @@ export default function Home() {
 
   const handleDeleteDocument = async (id: string) => {
     try {
-      await fetch(`/api/documents?session_id=${sessionId}`, {
+      const res = await fetch(`/api/documents?session_id=${sessionId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       })
+      const data: ApiResponse<{ deleted: boolean }> = await res.json()
+      if (!data.success) {
+        showToast('Delete failed: ' + data.error, 'error', 4000)
+        return
+      }
       setDocuments(prev => prev.filter(d => d.id !== id))
       setSelectedDocIds(prev => prev.filter(did => did !== id))
       showToast('Document deleted', 'success', 2000)
@@ -283,7 +308,18 @@ export default function Home() {
         return
       }
 
-      const reader = res.body?.getReader()
+      if (!res.ok || !res.body) {
+        // Non-streaming error response (e.g. validation failure) —
+        // { success: false, error, code } from apiError().
+        const data: ApiResponse<never> = await res.json()
+        const message = !data.success ? data.error : 'Something went wrong.'
+        setMessages(prev => [...prev, { role: 'assistant', content: `❌ ${message}` }])
+        showToast(message, 'error', 4000)
+        setLoading(false)
+        return
+      }
+
+      const reader = res.body.getReader()
       const decoder = new TextDecoder()
       const assistantMsg: Message = { role: 'assistant', content: '', sources: [] }
       setMessages(prev => [...prev, assistantMsg])
