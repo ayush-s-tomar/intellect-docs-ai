@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
+import ReactMarkdown from 'react-markdown'
 import { useSessionId } from '@/hooks/useSessionId'
 import { UPLOAD } from '@/lib/config'
 
@@ -609,7 +610,13 @@ export default function Home() {
                       ? 'bg-slate-800 border border-slate-700/50 text-slate-200 inline-block'
                       : 'glass-card border border-slate-800/60 text-slate-300 w-full relative z-10'
                   }`}>
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                    {msg.role === 'assistant' ? (
+                      <div className="markdown-body [&_p]:mb-3 [&_p:last-child]:mb-0 [&_strong]:text-slate-100 [&_strong]:font-semibold [&_em]:text-slate-300 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-3 [&_li]:mb-1 [&_code]:bg-slate-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-[13px] [&_code]:text-emerald-300 [&_pre]:bg-slate-950 [&_pre]:p-3 [&_pre]:rounded-lg [&_pre]:overflow-x-auto [&_pre]:mb-3 [&_a]:text-emerald-400 [&_a]:underline [&_h1]:text-base [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-sm [&_h2]:font-bold [&_h2]:mb-2 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mb-1.5 [&_blockquote]:border-l-2 [&_blockquote]:border-slate-700 [&_blockquote]:pl-3 [&_blockquote]:text-slate-400 [&_blockquote]:italic">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                    )}
 
                     {msg.role === 'assistant' && msg.content && (
                       <div className="mt-3 flex justify-end">
