@@ -11,32 +11,48 @@
   <img src="https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js" alt="Next.js"/>
   <img src="https://img.shields.io/badge/TypeScript-95%25-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript"/>
   <img src="https://img.shields.io/badge/Supabase-pgvector-3ECF8E?style=flat-square&logo=supabase&logoColor=white" alt="Supabase"/>
-  <img src="https://img.shields.io/badge/Groq-LLaMA%203.1-F55036?style=flat-square" alt="Groq"/>
+  <img src="https://img.shields.io/badge/Groq-GPT--OSS%2020B-F55036?style=flat-square" alt="Groq"/>
   <img src="https://img.shields.io/badge/Cohere-embeddings-39594D?style=flat-square" alt="Cohere"/>
   <img src="https://img.shields.io/badge/Upstash-Redis-00E9A3?style=flat-square&logo=redis&logoColor=white" alt="Upstash Redis"/>
   <img src="https://img.shields.io/github/last-commit/ayush-s-tomar/intellect-docs-ai?style=flat-square" alt="Last Commit"/>
   <img src="https://img.shields.io/github/stars/ayush-s-tomar/intellect-docs-ai?style=flat-square" alt="Stars"/>
 </p>
 
-Upload any document and ask questions about it in natural language. The AI answers strictly from your document and shows exactly which part of the document the answer came from — no hallucinations, full transparency.
+<p align="center">
+  Upload any document and ask questions about it in plain English.<br/>
+  Every answer is grounded strictly in your document and cited down to the exact chunk — no hallucinations, full transparency.
+</p>
 
-**🔗 Live Demo:** [intellect-docs-ai.vercel.app](https://intellect-docs-ai.vercel.app)
+<p align="center">
+  <a href="https://intellect-docs-ai.vercel.app"><b>🔗 Live Demo</b></a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#rag-quality-evaluation">Eval results</a> ·
+  <a href="#how-to-run-locally">Run locally</a>
+</p>
 
 <p align="center">
   <img src="./assets/askmydocs-demo.gif" alt="AskMyDocs demo — upload a document, ask a question, get a cited answer, and view the eval dashboard" width="800"/>
 </p>
 
-### 🎥 Full Walkthrough
+<details>
+<summary><b>🎥 Full video walkthrough</b></summary>
+<br/>
 
 https://github.com/user-attachments/assets/ae12af1b-3d89-4094-8c55-4f79a30ad8d7
 
+</details>
+
 ---
+
+## Why this exists
+
+Most "chat with your PDF" demos either hallucinate past the source document or hide *why* an answer was given. AskMyDocs was built to fix both: every answer is generated **strictly** from retrieved chunks, every chunk is shown with its similarity score, and a built-in eval harness scores retrieval + answer quality against a fixed benchmark — so retrieval or prompt changes can be regression-tested instead of eyeballed, the same discipline production RAG systems use before shipping.
 
 ## What it does
 
 - Upload any `.txt` or `.pdf` document and select it from the sidebar
 - Ask any question about it in natural language
-- Get an answer generated strictly from your document — never from the model's general knowledge
+- Get an answer generated strictly from your document, rendered with full markdown (bold, lists, headings, code blocks)
 - See exactly which chunks the answer came from, with similarity match scores
 - Run built-in evals to automatically grade retrieval and answer quality
 - Anonymous, session-scoped multi-user support — no signup required
@@ -50,16 +66,15 @@ https://github.com/user-attachments/assets/ae12af1b-3d89-4094-8c55-4f79a30ad8d7
 | Layer | Tech |
 |---|---|
 | Frontend | Next.js 15, TypeScript, Tailwind CSS |
-| AI / LLM | Groq API (LLaMA 3.1 8B Instant) |
+| AI / LLM | Groq API (OpenAI GPT-OSS 20B) |
 | Embeddings | Cohere embed-english-light-v3.0 (384-dim) |
 | Database | Supabase (PostgreSQL + pgvector) |
 | Retrieval | Supabase pgvector cosine similarity search |
 | Rate Limiting | Upstash Redis |
 | Deployment | Vercel |
 
----
-
-## Architecture
+<details>
+<summary><b>Architecture diagram</b></summary>
 
 ```
 Upload                          Query
@@ -79,7 +94,7 @@ embedBatch() — Cohere      match_chunks() RPC
 Supabase: documents +      top-5 matching chunks
 chunks (+ embedding_v2)            │
                                     ▼
-                            Groq (llama-3.1-8b-instant)
+                            Groq (openai/gpt-oss-20b)
                             streams answer from context
                                     │
                                     ▼
@@ -87,7 +102,7 @@ chunks (+ embedding_v2)            │
                             shown with match %
 ```
 
-The eval pipeline (`/api/eval`) runs this same retrieval → generation path against a fixed question set, then a second Groq call scores each answer — letting retrieval and prompt changes be regression-tested instead of eyeballed.
+</details>
 
 ---
 
@@ -99,7 +114,7 @@ The eval pipeline (`/api/eval`) runs this same retrieval → generation path aga
 4. When a question is asked, the question itself is embedded and matched against stored chunks using the `match_chunks` Postgres RPC — pgvector cosine similarity, scoped to the caller's session and selected document
 5. The top 5 matching chunks are sent to Groq as context
 6. Groq streams back an answer based strictly on those chunks
-7. The UI shows the answer plus the source chunks it came from, with a similarity match percentage for each
+7. The UI renders the answer as formatted markdown, plus the source chunks it came from, with a similarity match percentage for each
 
 ---
 
@@ -107,19 +122,22 @@ The eval pipeline (`/api/eval`) runs this same retrieval → generation path aga
 
 AskMyDocs ships with a built-in evaluation harness (`/api/eval`, dashboard at `/eval`) that automatically tests retrieval and answer quality against a fixed question set — an actual quality gate for the RAG pipeline, not just a demo.
 
-For each test question, the eval pipeline:
+<details>
+<summary><b>How the eval pipeline scores each answer</b></summary>
+
+For each test question:
 
 1. Embeds the question and retrieves the top 5 matching chunks via the same `match_chunks` pgvector search used in production
-2. Generates an answer from those chunks using Groq (llama-3.1-8b-instant)
+2. Generates an answer from those chunks using Groq (`openai/gpt-oss-20b`)
 3. **LLM-as-judge scoring** — a second Groq call grades the answer 0–10 on relevance, factual accuracy against the retrieved context, and clarity, returning a structured score and a one-line justification
 4. **Keyword validation** — checks the answer for expected keywords as a deterministic check alongside the LLM score
 5. Aggregates results into a summary: average score, pass/fail count (pass = score ≥ 6), pass rate, average chunks retrieved, and a letter grade (A–D)
 
-**Latest benchmark run:** 80% pass rate (4/5), average score 6.2/10, grade B — on the built-in test question set, pulled straight from the `/eval` dashboard so this number stays honest as the pipeline changes.
-
-This means changes to chunking, retrieval, or prompting can be regression-tested against a consistent benchmark instead of manually checking a few queries — the same practice used in production RAG systems before shipping pipeline changes.
-
 Test questions live in `src/lib/evalQuestions.ts` and are easy to extend with document-specific cases.
+
+</details>
+
+**Live benchmark numbers are on the [`/eval` dashboard](https://intellect-docs-ai.vercel.app/eval)** rather than pasted here as a static figure — a hardcoded score would go stale the moment retrieval or prompting changes, and an eval system you can't trust to stay current isn't much of a quality gate.
 
 ---
 
@@ -129,6 +147,7 @@ Test questions live in `src/lib/evalQuestions.ts` and are easy to extend with do
 - **Health check + uptime automation** — `/api/health` pings Supabase and is hit on a schedule, keeping the free-tier Supabase project from auto-pausing due to inactivity.
 - **Separated Supabase clients** — a public client (anon key, respects Row Level Security) and an admin client (service role key, server-only) are exported separately, so a service-role secret can never accidentally ship to the browser bundle.
 - **Continuous Integration** — every push runs an automated GitHub Actions workflow that lints, type-checks, and builds the project, catching errors before they reach production.
+- **Handled a live upstream breaking change** — when Groq deprecated `llama-3.1-8b-instant` in June 2026, the chat and eval pipelines were migrated to `openai/gpt-oss-20b` with no downtime, and request validation was hardened (Zod schema now coerces numeric document IDs defensively at the API boundary rather than rejecting them).
 
 ---
 
@@ -148,7 +167,8 @@ The full schema (pgvector extension, session-scoped columns, indexes, and the `m
 
 ---
 
-## Project Structure
+<details>
+<summary><b>Project Structure</b></summary>
 
 ```
 src/
@@ -161,7 +181,8 @@ src/
 │   │   └── upload/      # File upload, chunking, storage
 │   ├── eval/
 │   │   └── page.tsx     # Eval results dashboard
-│   └── page.tsx         # Main UI
+│   ├── icon.png         # App icon / favicon
+│   └── page.tsx         # Main UI (markdown-rendered chat)
 ├── hooks/
 │   └── useSessionId.ts  # Anonymous session identity
 └── lib/
@@ -169,6 +190,7 @@ src/
     ├── embeddings.ts    # Cohere embedding calls (single + batched)
     ├── chunker.ts       # Sentence-aware document chunking
     ├── evalQuestions.ts # Eval test question set
+    ├── validation.ts    # Zod request schemas
     └── ratelimit.ts     # Upstash rate limiters
 supabase/
 └── schema.sql           # Full database schema
@@ -176,9 +198,10 @@ assets/
 └── askmydocs-demo.gif   # README demo GIF
 ```
 
----
+</details>
 
-## How to run locally
+<details>
+<summary><b>How to run locally</b></summary>
 
 **1. Clone the repo**
 ```bash
@@ -223,9 +246,11 @@ npm run dev
 
 [http://localhost:3000](http://localhost:3000)
 
----
+</details>
 
-## Deployment
+<details>
+<summary><b>Deployment</b></summary>
+<br/>
 
 This project is deployed on [Vercel](https://vercel.com) — the official platform for Next.js apps.
 
@@ -234,6 +259,8 @@ To deploy your own:
 2. Go to vercel.com → New Project → Import repo
 3. Add all environment variables in the Vercel dashboard
 4. Deploy — done in under 2 minutes
+
+</details>
 
 ---
 
@@ -245,6 +272,7 @@ To deploy your own:
 - Implemented session-scoped multi-user isolation without requiring authentication — zero signup friction while still enforcing real per-user data boundaries.
 - Added rate limiting (Upstash Redis) and an automated uptime keepalive to keep a free-tier deployment stable under real traffic.
 - Set up CI (lint, type-check, build) on every push so regressions are caught before they reach production.
+- Handled Groq's deprecation of `llama-3.1-8b-instant` by migrating the chat and eval pipelines to `openai/gpt-oss-20b` with no downtime, and hardened request validation (Zod) to coerce numeric document IDs defensively at the API boundary.
 
 ---
 
