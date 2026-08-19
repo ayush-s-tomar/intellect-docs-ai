@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
@@ -26,8 +26,6 @@ interface Toast {
   type: 'success' | 'error' | 'warning'
 }
 
-// Matches lib/api-response.ts — success responses are
-// { success: true, data: T }, errors are { success: false, error, code }.
 type ApiResponse<T> =
   | { success: true; data: T }
   | { success: false; error: string; code: string }
@@ -54,9 +52,6 @@ export default function Home() {
   const toastId = useRef(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Conversation has real back-and-forth once there's at least one
-  // user message and one assistant reply beyond the welcome message —
-  // that's when multi-turn memory (chat/route.ts) actually kicks in.
   const hasConversationHistory = messages.filter(m => m.role === 'user').length >= 1
     && messages.filter(m => m.role === 'assistant').length >= 2
 
@@ -309,8 +304,6 @@ export default function Home() {
       }
 
       if (!res.ok || !res.body) {
-        // Non-streaming error response (e.g. validation failure) —
-        // { success: false, error, code } from apiError().
         const data: ApiResponse<never> = await res.json()
         const message = !data.success ? data.error : 'Something went wrong.'
         setMessages(prev => [...prev, { role: 'assistant', content: `❌ ${message}` }])
@@ -375,6 +368,9 @@ export default function Home() {
   return (
     <div className="flex h-screen bg-[#0a0a0f] text-slate-100 font-mono overflow-hidden">
 
+      <div className="ambient-orb ambient-orb-1" />
+      <div className="ambient-orb ambient-orb-2" />
+
       <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm w-full">
         {toasts.map(toast => (
           <div
@@ -402,7 +398,7 @@ export default function Home() {
       <aside className={`
         fixed md:relative z-30 md:z-auto
         w-72 h-full
-        bg-[#0d0d14] border-r border-slate-800/40
+        glass-card border-r border-slate-800/40
         flex flex-col
         transition-transform duration-300
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
@@ -546,7 +542,7 @@ export default function Home() {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col h-full overflow-hidden">
+      <main className="flex-1 flex flex-col h-full overflow-hidden relative z-10">
 
         <header className="h-14 border-b border-slate-800/40 bg-[#0a0a0f]/80 backdrop-blur flex items-center justify-between px-6 flex-shrink-0">
           <div className="flex items-center gap-3">
@@ -611,7 +607,7 @@ export default function Home() {
                   <div className={`px-5 py-4 rounded-xl text-sm leading-relaxed ${
                     msg.role === 'user'
                       ? 'bg-slate-800 border border-slate-700/50 text-slate-200 inline-block'
-                      : 'bg-[#0d0d14] border border-slate-800/60 text-slate-300 w-full'
+                      : 'glass-card border border-slate-800/60 text-slate-300 w-full relative z-10'
                   }`}>
                     <p className="whitespace-pre-wrap">{msg.content}</p>
 
@@ -674,7 +670,7 @@ export default function Home() {
 
             {loading && (
               <div className="flex justify-start">
-                <div className="bg-[#0d0d14] border border-slate-800/60 rounded-xl px-5 py-4">
+                <div className="glass-card border border-slate-800/60 rounded-xl px-5 py-4">
                   <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '0ms' }} />
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -696,7 +692,7 @@ export default function Home() {
               onChange={e => setInput(e.target.value)}
               placeholder={selectedDocIds.length === 0 ? "Select a document first..." : "Ask anything about your document..."}
               disabled={loading || selectedDocIds.length === 0}
-              className="flex-1 bg-[#0d0d14] border border-slate-800 text-slate-200 rounded-xl px-5 py-3.5 text-sm focus:outline-none focus:border-emerald-500/40 placeholder:text-slate-600 disabled:opacity-40 transition-colors"
+              className="flex-1 bg-[#0d0d14] border border-slate-800 text-slate-200 rounded-xl px-5 py-3.5 text-sm focus:outline-none focus:border-emerald-500/40 input-glow placeholder:text-slate-600 disabled:opacity-40 transition-colors"
             />
             <button
               type="submit"
