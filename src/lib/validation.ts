@@ -7,7 +7,7 @@ export const chatMessageSchema = z.object({
 
 export const chatRequestSchema = z.object({
   messages: z.array(chatMessageSchema).min(1, 'At least one message is required'),
-  selectedDocIds: z.array(z.string()).default([]),
+  selectedDocIds: z.array(z.union([z.string(), z.number()]).transform(val => String(val))).default([]),
   session_id: z.string().min(1, 'session_id is required'),
 })
 

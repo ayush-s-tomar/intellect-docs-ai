@@ -169,9 +169,9 @@ export default function Home() {
       const data: ApiResponse<UploadData> = await res.json()
       if (data.success) {
         await fetchDocuments()
-        setSelectedDocIds(prev => [...prev, data.data.document.id])
+        setSelectedDocIds(prev => [...prev, String(data.data.document.id)])
         setDocuments(prev => prev.map(d =>
-          d.id === data.data.document.id
+          d.id === String(data.data.document.id)
             ? { ...d, word_count: data.data.wordCount, chunk_count: data.data.chunksCreated, summary: data.data.summary }
             : d
         ))

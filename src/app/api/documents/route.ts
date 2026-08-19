@@ -24,7 +24,8 @@ export async function GET(req: NextRequest) {
       return apiError('UPSTREAM_ERROR', 'Failed to fetch documents')
     }
 
-    return apiSuccess(data || [])
+    const normalized = (data || []).map(doc => ({ ...doc, id: String(doc.id) }))
+    return apiSuccess(normalized)
 
   } catch (err) {
     return handleApiError(err, 'documents.GET')
