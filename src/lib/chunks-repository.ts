@@ -16,6 +16,15 @@ interface SearchParams {
   docIds: number[]
 }
 
+// A chunk is only usable if it has non-empty content. The hybrid RPC's
+// FULL OUTER JOIN can produce rows where content is null/empty for edge
+// cases (e.g. a text-search-only match whose vector leg didn't populate
+// content correctly). Array length alone isn't a reliable "did retrieval
+// work" signal — we need to check the content itself.
+function hasUsableContent(chunks: ChunkResult[] | null): chunks is ChunkResult[] {
+  return !!chunks && chunks.some(c => c.content && c.content.trim().length > 0)
+}
+
 export async function searchChunksHybrid(params: SearchParams): Promise<ChunkResult[]> {
   const { queryText, queryEmbedding, matchCount, sessionId, docIds } = params
 
@@ -31,11 +40,19 @@ export async function searchChunksHybrid(params: SearchParams): Promise<ChunkRes
     logger.error('chunks-repository', 'Hybrid search RPC failed', { error: error.message, sessionId })
   }
 
-  if (chunks && chunks.length > 0) {
-    return chunks as ChunkResult[]
+  if (hasUsableContent(chunks)) {
+    // Drop any individual rows with empty content rather than passing
+    // them through — a partially-empty result set shouldn't leak blanks
+    // into the context sent to the LLM.
+    const usable = (chunks as ChunkResult[]).filter(c => c.content && c.content.trim().length > 0)
+    return usable
   }
 
-  logger.warn('chunks-repository', 'Hybrid search returned no results, falling back', { sessionId, docIds })
+  logger.warn('chunks-repository', 'Hybrid search returned no usable content, falling back', {
+    sessionId,
+    docIds,
+    rawResultCount: chunks?.length ?? 0,
+  })
   return fallbackFetchChunks(sessionId, docIds, matchCount)
 }
 
@@ -77,7 +94,8 @@ async function fallbackFetchChunks(
 }
 
 export function chunksToContext(chunks: ChunkResult[]): string {
-  return chunks.map(c => c.content).join('\n\n') || 'No context found.'
+  const joined = chunks.map(c => c.content).filter(Boolean).join('\n\n')
+  return joined.trim() || 'No context found.'
 }
 
 export function chunksToSources(chunks: ChunkResult[]) {
