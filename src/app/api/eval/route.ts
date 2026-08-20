@@ -4,7 +4,7 @@ import { automatedEvalQuestions } from '@/lib/evalQuestions'
 import { evalRequestSchema, formatZodError } from '@/lib/validation'
 import { env } from '@/lib/env'
 import { apiSuccess, apiError, handleApiError } from '@/lib/api-response'
-import { embedText } from '@/lib/embeddings'
+import { embedQuery } from '@/lib/embeddings'
 import { searchChunksHybrid, chunksToContext } from '@/lib/chunks-repository'
 import { RETRIEVAL } from '@/lib/config'
 
@@ -92,7 +92,7 @@ export async function POST(req: NextRequest) {
     let totalChunksRetrieved = 0
 
     for (const evalQ of automatedEvalQuestions) {
-      const queryEmbedding = await embedText(evalQ.question)
+      const queryEmbedding = await embedQuery(evalQ.question)
 
       const finalChunks = await searchChunksHybrid({
         queryText: evalQ.question,

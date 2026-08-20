@@ -16,9 +16,10 @@ async function generateSummary(chunks: string[]): Promise<string> {
     const preview = chunks.slice(0, 3).join('\n\n').slice(0, 1500)
 
     const completion = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+      model: 'openai/gpt-oss-20b',
       temperature: 0.3,
-      max_tokens: 60,
+      max_tokens: 200,
+      reasoning_effort: 'low',
       messages: [
         {
           role: 'system',
