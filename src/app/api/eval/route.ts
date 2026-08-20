@@ -128,8 +128,7 @@ export async function POST(req: NextRequest) {
       const completion = await groq.chat.completions.create({
         model: 'openai/gpt-oss-20b',
         temperature: 0.2,
-        max_tokens: 600,
-        reasoning_effort: 'low',
+        max_tokens: 1200,
         messages: [
           {
             role: 'system',
