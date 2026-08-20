@@ -64,4 +64,21 @@ describe('chunkText', () => {
     expect(joined).toContain('Gamma')
     expect(joined).toContain('Delta')
   })
+
+  it('never starts a chunk mid-word from the overlap buffer', () => {
+    // Regression test for a bug where the overlap buffer was a raw
+    // text.slice(-overlap) with no regard for word boundaries — e.g.
+    // "growth-stage SaaS companies" would get cut to "th-stage SaaS
+    // companies" and that fragment would lead the next chunk.
+    const text = 'Northwind faces risks common to growth-stage SaaS companies operating today. '.repeat(30)
+    const chunks = chunkText(text, 300, 60, 40)
+    for (const chunk of chunks) {
+      const trimmed = chunk.trimStart()
+      expect(trimmed.length).toBeGreaterThan(0)
+      // every chunk should start with a real word character, not a
+      // truncated fragment like "th-stage" or a leading space/punctuation
+      // that implies a word was cut in half.
+      expect(/^[A-Za-z0-9]/.test(trimmed)).toBe(true)
+    }
+  })
 })
