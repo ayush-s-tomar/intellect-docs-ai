@@ -129,6 +129,7 @@ export async function POST(req: NextRequest) {
         model: 'openai/gpt-oss-20b',
         temperature: 0.2,
         max_tokens: 1200,
+        reasoning_effort: 'low',
         messages: [
           {
             role: 'system',
