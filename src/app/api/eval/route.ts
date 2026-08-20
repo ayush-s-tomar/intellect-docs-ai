@@ -13,10 +13,15 @@ const groq = new Groq({ apiKey: env.GROQ_API_KEY })
 async function scoreAnswer(
   question: string,
   answer: string,
-  context: string
+  fullContext: string
 ): Promise<{ score: number; reason: string }> {
   let raw = ''
   try {
+    // IMPORTANT: judge must see the SAME context the answer model saw.
+    // This used to be fullContext.slice(0, 800) — far shorter than what
+    // the answer-generation call received — so the judge would penalize
+    // correct answers as "not in context" simply because its truncated
+    // copy was missing facts the answer model could actually see.
     const completion = await groq.chat.completions.create({
       model: 'openai/gpt-oss-20b',
       temperature: 0,
@@ -37,7 +42,7 @@ Reply ONLY in this exact JSON format:
         {
           role: 'user',
           content: `QUESTION: ${question}
-CONTEXT: ${context.slice(0, 800)}
+CONTEXT: ${fullContext.slice(0, 4000)}
 ANSWER: ${answer}
 
 Score this answer:`
