@@ -67,9 +67,9 @@ Most "chat with your PDF" demos either hallucinate past the source document or h
 |---|---|
 | Frontend | Next.js 15, TypeScript, Tailwind CSS |
 | AI / LLM | Groq API (OpenAI GPT-OSS 20B) |
-| Embeddings | Cohere embed-english-light-v3.0 (384-dim) |
+| Embeddings | Cohere embed-english-light-v3.0 (384-dim), asymmetric query/document encoding |
 | Database | Supabase (PostgreSQL + pgvector) |
-| Retrieval | Supabase pgvector cosine similarity search |
+| Retrieval | Hybrid search — pgvector cosine similarity + Postgres full-text search, fused via Reciprocal Rank Fusion (RRF) |
 | Rate Limiting | Upstash Redis |
 | Deployment | Vercel |
 
@@ -83,16 +83,18 @@ Upload                          Query
 chunker.ts              useSessionId.ts (anon session)
 (sentence-aware,                  │
  800-char chunks,                 ▼
- 150-char overlap)        embedText() — Cohere
+ 150-char overlap,          embedQuery() — Cohere
+ word-boundary safe)      (search_query input_type)
   │                                │
   ▼                                ▼
-embedBatch() — Cohere      match_chunks() RPC
-(384-dim vectors,          (pgvector cosine search,
- batched API calls)         session + doc scoped)
-  │                                │
-  ▼                                ▼
-Supabase: documents +      top-5 matching chunks
-chunks (+ embedding_v2)            │
+embedText() — Cohere      hybrid_search_chunks() RPC
+(search_document          (pgvector cosine + full-text
+ input_type, batched)      search, fused via RRF,
+  │                         session + doc scoped)
+  ▼                                │
+Supabase: documents +              ▼
+chunks (+ embedding_v2)    top-5 matching chunks
+                                    │
                                     ▼
                             Groq (openai/gpt-oss-20b)
                             streams answer from context
@@ -109,9 +111,9 @@ chunks (+ embedding_v2)            │
 ## How it works
 
 1. User uploads a document
-2. `chunker.ts` splits it into sentence-aware chunks (~800 characters, 150-character overlap), with a guard so any single oversized sentence still gets hard-split rather than truncated
-3. Each chunk is embedded via Cohere (`embedBatch`, batched into groups of up to 96 to minimize API round-trips) and stored in Supabase alongside its 384-dimension vector
-4. When a question is asked, the question itself is embedded and matched against stored chunks using the `match_chunks` Postgres RPC — pgvector cosine similarity, scoped to the caller's session and selected document
+2. `chunker.ts` splits it into sentence-aware chunks (~800 characters, 150-character overlap), with a guard so any single oversized sentence still gets hard-split rather than truncated, and overlap slicing snaps to word boundaries so chunks never open mid-word
+3. Each chunk is embedded via Cohere with `input_type: search_document` and stored in Supabase alongside its 384-dimension vector
+4. When a question is asked, the question itself is embedded with `input_type: search_query` — Cohere's model is asymmetric, so queries and documents are deliberately encoded differently to maximize match quality — and matched against stored chunks using the `hybrid_search_chunks` Postgres RPC, which fuses pgvector cosine similarity with full-text search (`websearch_to_tsquery`) via Reciprocal Rank Fusion, scoped to the caller's session and selected document
 5. The top 5 matching chunks are sent to Groq as context
 6. Groq streams back an answer based strictly on those chunks
 7. The UI renders the answer as formatted markdown, plus the source chunks it came from, with a similarity match percentage for each
@@ -127,13 +129,13 @@ AskMyDocs ships with a built-in evaluation harness (`/api/eval`, dashboard at `/
 
 For each test question:
 
-1. Embeds the question and retrieves the top 5 matching chunks via the same `match_chunks` pgvector search used in production
+1. Embeds the question with `embedQuery` and retrieves the top 5 matching chunks via the same `hybrid_search_chunks` RPC used in production
 2. Generates an answer from those chunks using Groq (`openai/gpt-oss-20b`)
-3. **LLM-as-judge scoring** — a second Groq call grades the answer 0–10 on relevance, factual accuracy against the retrieved context, and clarity, returning a structured score and a one-line justification
+3. **LLM-as-judge scoring** — a second Groq call grades the answer 0–10 on relevance, factual accuracy against the *same full retrieved context* the answer model saw, and clarity, returning a structured score and a one-line justification
 4. **Keyword validation** — checks the answer for expected keywords as a deterministic check alongside the LLM score
 5. Aggregates results into a summary: average score, pass/fail count (pass = score ≥ 6), pass rate, average chunks retrieved, and a letter grade (A–D)
 
-Test questions live in `src/lib/evalQuestions.ts` and are easy to extend with document-specific cases.
+Test questions live in `src/lib/evalQuestions.ts`. One question (a multi-turn follow-up that depends on conversation history) is intentionally excluded from the automated loop via an `automated: false` flag, since a stateless one-shot eval harness can't answer it — it's kept as a manual test case for the chat UI instead.
 
 </details>
 
@@ -156,14 +158,14 @@ Test questions live in `src/lib/evalQuestions.ts` and are easy to extend with do
 AskMyDocs supports multiple concurrent users without requiring login:
 
 - On first visit, `useSessionId.ts` generates a `crypto.randomUUID()` and persists it in `localStorage`, giving each browser a stable, anonymous identity.
-- Every upload, fetch, and delete request is scoped server-side by `session_id` — `/api/documents` and `match_chunks` only ever return or modify data matching the caller's session, so users never see or delete each other's documents on a shared deployment.
+- Every upload, fetch, and delete request is scoped server-side by `session_id` — `/api/documents` and `hybrid_search_chunks` only ever return or modify data matching the caller's session, so users never see or delete each other's documents on a shared deployment.
 - This is a deliberate lightweight-auth tradeoff: zero signup friction for a demo/portfolio tool, while still enforcing real data isolation.
 
 ---
 
 ## Database Schema
 
-The full schema (pgvector extension, session-scoped columns, indexes, and the `match_chunks` similarity search function) lives in `supabase/schema.sql` — a single source of truth instead of scattered migration history in the Supabase dashboard.
+The full schema (pgvector extension, session-scoped columns, full-text search index, indexes, and the `hybrid_search_chunks` / legacy `match_chunks` functions) lives in `supabase/schema.sql` — a single source of truth instead of scattered migration history in the Supabase dashboard.
 
 ---
 
@@ -186,12 +188,13 @@ src/
 ├── hooks/
 │   └── useSessionId.ts  # Anonymous session identity
 └── lib/
-    ├── supabase.ts      # Public + admin Supabase clients
-    ├── embeddings.ts    # Cohere embedding calls (single + batched)
-    ├── chunker.ts       # Sentence-aware document chunking
-    ├── evalQuestions.ts # Eval test question set
-    ├── validation.ts    # Zod request schemas
-    └── ratelimit.ts     # Upstash rate limiters
+    ├── supabase.ts          # Public + admin Supabase clients
+    ├── embeddings.ts        # Cohere embedding calls — embedText (documents) + embedQuery (search)
+    ├── chunker.ts            # Sentence-aware, word-boundary-safe document chunking
+    ├── chunks-repository.ts  # Hybrid search + fallback retrieval logic
+    ├── evalQuestions.ts      # Eval test question set
+    ├── validation.ts         # Zod request schemas
+    └── ratelimit.ts          # Upstash rate limiters
 supabase/
 └── schema.sql           # Full database schema
 assets/
@@ -266,8 +269,12 @@ To deploy your own:
 
 ## Engineering Decisions & Key Challenges
 
-- Diagnosed a chunk-size/embedding-truncation mismatch that was silently degrading retrieval accuracy — fixed by aligning chunk length to the embedding model's effective context.
-- Built an LLM-as-judge evaluation harness to regression-test RAG quality on every change, instead of manually spot-checking answers.
+- **Diagnosed a query/document embedding asymmetry bug** — questions were being embedded with Cohere's `search_document` input type instead of `search_query`, silently degrading retrieval relevance across the entire pipeline despite chunk embeddings themselves being correct.
+- **Found and fixed a chunk-truncation mismatch** — chunks were stored at ~800 characters but only the first 512 were ever embedded, meaning the embedding didn't represent the back half of many chunks.
+- **Fixed a mid-word chunk-boundary bug** — the overlap buffer used a raw character-count slice with no word-boundary awareness, occasionally splitting a chunk open mid-word; fixed by snapping the slice forward to the next word boundary, with a regression test added to catch it if it recurs.
+- **Built an LLM-as-judge evaluation harness, then found a scoring bug in the judge itself** — the judge was scoring answers against a context slice far shorter than what the answer model actually saw, causing it to falsely penalize correct answers as "not supported by context."
+- **Diagnosed silent reasoning-model token exhaustion** — `openai/gpt-oss-20b` spends part of its token budget on internal reasoning before writing output; under-provisioned `max_tokens` caused it to silently return empty answers on harder questions with no error, only visible via structured logging of `finish_reason`.
+- **Migrated to hybrid search** — combined pgvector cosine similarity with Postgres full-text search via Reciprocal Rank Fusion (RRF), so exact terms, proper nouns, and numeric values that embed poorly semantically are still reliably retrieved.
 - Separated public and admin Supabase clients so a service-role secret can never leak into the browser bundle.
 - Implemented session-scoped multi-user isolation without requiring authentication — zero signup friction while still enforcing real per-user data boundaries.
 - Added rate limiting (Upstash Redis) and an automated uptime keepalive to keep a free-tier deployment stable under real traffic.
