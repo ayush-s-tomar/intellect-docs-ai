@@ -5,7 +5,7 @@ import { evalRequestSchema, formatZodError } from '@/lib/validation'
 import { env } from '@/lib/env'
 import { apiSuccess, apiError, handleApiError } from '@/lib/api-response'
 import { embedText } from '@/lib/embeddings'
-import { searchChunksVectorOnly, chunksToContext } from '@/lib/chunks-repository'
+import { searchChunksHybrid, chunksToContext } from '@/lib/chunks-repository'
 import { RETRIEVAL } from '@/lib/config'
 
 const groq = new Groq({ apiKey: env.GROQ_API_KEY })
@@ -17,7 +17,7 @@ async function scoreAnswer(
 ): Promise<{ score: number; reason: string }> {
   try {
     const completion = await groq.chat.completions.create({
-      model: 'llama-3.1-8b-instant',
+      model: 'openai/gpt-oss-20b',
       temperature: 0,
       max_tokens: 100,
       messages: [
@@ -75,7 +75,8 @@ export async function POST(req: NextRequest) {
     for (const evalQ of evalQuestions) {
       const queryEmbedding = await embedText(evalQ.question)
 
-      const finalChunks = await searchChunksVectorOnly({
+      const finalChunks = await searchChunksHybrid({
+        queryText: evalQ.question,
         queryEmbedding,
         matchCount: RETRIEVAL.MATCH_COUNT,
         sessionId: session_id,
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest) {
         : 0
 
       const completion = await groq.chat.completions.create({
-        model: 'llama-3.1-8b-instant',
+        model: 'openai/gpt-oss-20b',
         temperature: 0.2,
         max_tokens: 200,
         messages: [
