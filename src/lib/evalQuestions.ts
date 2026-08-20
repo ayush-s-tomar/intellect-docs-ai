@@ -11,6 +11,7 @@ export interface EvalQuestion {
   question: string
   expectedKeywords: string[]  // answer must contain these words to pass
   topic: string               // just a label for the report
+  automated?: boolean         // false = manual-only, excluded from /api/eval loop
 }
 
 export const evalQuestions: EvalQuestion[] = [
@@ -58,12 +59,19 @@ export const evalQuestions: EvalQuestion[] = [
   },
   {
     // Multi-turn follow-up — depends on MAX_HISTORY_MESSAGES context
-    // being carried into the prompt (see chat/route.ts). Not run by
-    // the eval harness in isolation since /api/eval sends one-shot
-    // questions, but kept here as a manual test case to run in the
-    // chat UI directly after a prior question.
+    // being carried into the prompt (see chat/route.ts). Excluded from
+    // the automated /api/eval loop since it sends one-shot questions
+    // with no prior turn to refer back to. Kept here as a manual test
+    // case to run in the chat UI directly after a prior question.
     question: "Can you go into more detail on that last point?",
     expectedKeywords: [],
-    topic: "Conversation memory (manual test — ask a question first)"
+    topic: "Conversation memory (manual test — ask a question first)",
+    automated: false
   }
 ]
+
+// Questions actually run by /api/eval — excludes manual-only cases
+// (automated: false) that require context the one-shot harness can't provide.
+export const automatedEvalQuestions: EvalQuestion[] = evalQuestions.filter(
+  q => q.automated !== false
+)

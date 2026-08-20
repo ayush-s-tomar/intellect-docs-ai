@@ -1,6 +1,6 @@
 ﻿import { NextRequest } from 'next/server'
 import Groq from 'groq-sdk'
-import { evalQuestions } from '@/lib/evalQuestions'
+import { automatedEvalQuestions } from '@/lib/evalQuestions'
 import { evalRequestSchema, formatZodError } from '@/lib/validation'
 import { env } from '@/lib/env'
 import { apiSuccess, apiError, handleApiError } from '@/lib/api-response'
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
     let totalScore = 0
     let totalChunksRetrieved = 0
 
-    for (const evalQ of evalQuestions) {
+    for (const evalQ of automatedEvalQuestions) {
       const queryEmbedding = await embedText(evalQ.question)
 
       const finalChunks = await searchChunksHybrid({
@@ -171,17 +171,17 @@ ${context}`
       })
     }
 
-    const avgScore = Math.round((totalScore / evalQuestions.length) * 10) / 10
-    const avgChunks = Math.round(totalChunksRetrieved / evalQuestions.length * 10) / 10
+    const avgScore = Math.round((totalScore / automatedEvalQuestions.length) * 10) / 10
+    const avgChunks = Math.round(totalChunksRetrieved / automatedEvalQuestions.length * 10) / 10
     const passCount = results.filter(r => r.score >= 6).length
 
     return apiSuccess({
       summary: {
-        totalQuestions: evalQuestions.length,
+        totalQuestions: automatedEvalQuestions.length,
         averageScore: avgScore,
         passed: passCount,
-        failed: evalQuestions.length - passCount,
-        passRate: Math.round(passCount / evalQuestions.length * 100),
+        failed: automatedEvalQuestions.length - passCount,
+        passRate: Math.round(passCount / automatedEvalQuestions.length * 100),
         avgChunksRetrieved: avgChunks,
         grade: avgScore >= 8 ? 'A' : avgScore >= 6 ? 'B' : avgScore >= 4 ? 'C' : 'D',
       },
