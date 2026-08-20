@@ -1,5 +1,19 @@
 ﻿import { CHUNKING } from '@/lib/config'
 
+// Cuts the last `overlap` chars off `text`, then trims forward to the next
+// word boundary so we never split inside a word (e.g. "growth-stage" ->
+// "th-stage"). A plain text.slice(-overlap) has no notion of word
+// boundaries and will cut wherever the character count happens to land.
+function sliceOverlapAtWordBoundary(text: string, overlap: number): string {
+  const raw = text.slice(-overlap)
+  const firstSpace = raw.indexOf(' ')
+  // If there's no space in the slice (single very long "word"), or the
+  // space is right at the start, just use the raw slice as-is — there's
+  // no clean boundary to snap to anyway.
+  if (firstSpace <= 0) return raw
+  return raw.slice(firstSpace + 1)
+}
+
 export function chunkText(
   text: string,
   chunkSize: number = CHUNKING.CHUNK_SIZE,
@@ -23,7 +37,7 @@ export function chunkText(
     } else {
       current += sentence + ' '
       if (current.length > overlap) {
-        overlapBuffer = current.slice(-overlap)
+        overlapBuffer = sliceOverlapAtWordBoundary(current, overlap)
       }
     }
   }
