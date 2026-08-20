@@ -39,6 +39,10 @@ interface Document {
   name: string
 }
 
+type DocumentsApiResponse =
+  | { success: true; data: Document[] }
+  | { success: false; error: string; code: string }
+
 export default function EvalPage() {
   const sessionId = useSessionId()
   const [documentId, setDocumentId] = useState('')
@@ -51,7 +55,9 @@ export default function EvalPage() {
     if (!sessionId) return
     fetch(`/api/documents?session_id=${sessionId}`)
       .then(r => r.json())
-      .then(data => setDocuments(data || []))
+      .then((res: DocumentsApiResponse) => {
+        setDocuments(res.success ? res.data : [])
+      })
       .catch(() => setDocuments([]))
   }, [sessionId])
 
