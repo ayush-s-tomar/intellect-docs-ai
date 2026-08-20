@@ -20,7 +20,8 @@ async function scoreAnswer(
     const completion = await groq.chat.completions.create({
       model: 'openai/gpt-oss-20b',
       temperature: 0,
-      max_tokens: 150,
+      max_tokens: 500,
+      reasoning_effort: 'low',
       response_format: { type: 'json_object' },
       messages: [
         {
@@ -45,6 +46,11 @@ Score this answer:`
     })
 
     raw = completion.choices[0]?.message?.content?.trim() || ''
+    const finishReason = completion.choices[0]?.finish_reason
+
+    if (!raw) {
+      throw new Error(`Empty judge response (finish_reason: ${finishReason})`)
+    }
 
     // openai/gpt-oss-20b is a reasoning model and sometimes emits chain-of-thought
     // text before/after the JSON object, and/or wraps it in markdown fences
