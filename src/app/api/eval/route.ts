@@ -52,11 +52,6 @@ Score this answer:`
       throw new Error(`Empty judge response (finish_reason: ${finishReason})`)
     }
 
-    // openai/gpt-oss-20b is a reasoning model and sometimes emits chain-of-thought
-    // text before/after the JSON object, and/or wraps it in markdown fences
-    // (```json ... ```). response_format: json_object constrains it, but we
-    // still defensively strip fences and extract the {...} object rather than
-    // trusting the whole string is bare JSON.
     const cleaned = raw.replace(/```json\s*|```\s*/g, '').trim()
     const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
@@ -117,10 +112,19 @@ export async function POST(req: NextRequest) {
           )
         : 0
 
+      // NOTE: openai/gpt-oss-20b is a reasoning model. It spends part of its
+      // token budget on internal reasoning before writing the visible answer.
+      // With max_tokens too low, easy questions (little reasoning needed)
+      // succeed while harder questions silently return empty content because
+      // the reasoning alone exhausts the budget. reasoning_effort: 'low' caps
+      // how much it reasons, and a higher max_tokens gives it room to still
+      // produce output after reasoning. Same fix already applied to the judge
+      // completion above.
       const completion = await groq.chat.completions.create({
         model: 'openai/gpt-oss-20b',
         temperature: 0.2,
-        max_tokens: 200,
+        max_tokens: 600,
+        reasoning_effort: 'low',
         messages: [
           {
             role: 'system',
@@ -138,6 +142,14 @@ ${context}`
       })
 
       const answer = completion.choices[0]?.message?.content?.trim() || ''
+      const answerFinishReason = completion.choices[0]?.finish_reason
+      if (!answer) {
+        console.error('eval: empty answer from QA completion', {
+          question: evalQ.question,
+          finishReason: answerFinishReason,
+          chunksRetrieved: finalChunks.length,
+        })
+      }
 
       const { score, reason } = await scoreAnswer(evalQ.question, answer, context)
       totalScore += score
