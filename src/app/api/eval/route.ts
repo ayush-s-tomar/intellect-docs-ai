@@ -15,6 +15,7 @@ async function scoreAnswer(
   answer: string,
   context: string
 ): Promise<{ score: number; reason: string }> {
+  let raw = ''
   try {
     const completion = await groq.chat.completions.create({
       model: 'openai/gpt-oss-20b',
@@ -42,13 +43,23 @@ Score this answer:`
       ],
     })
 
-    const raw = completion.choices[0]?.message?.content?.trim() || ''
-    const parsed = JSON.parse(raw)
+    raw = completion.choices[0]?.message?.content?.trim() || ''
+
+    // openai/gpt-oss-20b sometimes wraps JSON in markdown code fences
+    // (```json ... ```), which breaks a naive JSON.parse. Strip them
+    // before parsing.
+    const cleaned = raw.replace(/```json\s*|```\s*/g, '').trim()
+
+    const parsed = JSON.parse(cleaned)
     return {
       score: Math.min(10, Math.max(0, parsed.score)),
       reason: parsed.reason || ''
     }
-  } catch {
+  } catch (err) {
+    console.error('scoreAnswer: failed to parse judge response', {
+      error: err instanceof Error ? err.message : err,
+      raw,
+    })
     return { score: 0, reason: 'Failed to score' }
   }
 }
