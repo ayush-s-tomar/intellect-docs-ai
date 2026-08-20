@@ -40,6 +40,13 @@ export async function searchChunksHybrid(params: SearchParams): Promise<ChunkRes
     logger.error('chunks-repository', 'Hybrid search RPC failed', { error: error.message, sessionId })
   }
 
+  // TEMP DEBUG — remove after diagnosing
+  logger.warn('chunks-repository', 'DEBUG hybrid search result', {
+    queryText,
+    rawCount: chunks?.length ?? 0,
+    sample: chunks?.[0] ?? null,
+  })
+
   if (hasUsableContent(chunks)) {
     // Drop any individual rows with empty content rather than passing
     // them through — a partially-empty result set shouldn't leak blanks
