@@ -20,7 +20,8 @@ async function scoreAnswer(
     const completion = await groq.chat.completions.create({
       model: 'openai/gpt-oss-20b',
       temperature: 0,
-      max_tokens: 100,
+      max_tokens: 150,
+      response_format: { type: 'json_object' },
       messages: [
         {
           role: 'system',
@@ -45,12 +46,18 @@ Score this answer:`
 
     raw = completion.choices[0]?.message?.content?.trim() || ''
 
-    // openai/gpt-oss-20b sometimes wraps JSON in markdown code fences
-    // (```json ... ```), which breaks a naive JSON.parse. Strip them
-    // before parsing.
+    // openai/gpt-oss-20b is a reasoning model and sometimes emits chain-of-thought
+    // text before/after the JSON object, and/or wraps it in markdown fences
+    // (```json ... ```). response_format: json_object constrains it, but we
+    // still defensively strip fences and extract the {...} object rather than
+    // trusting the whole string is bare JSON.
     const cleaned = raw.replace(/```json\s*|```\s*/g, '').trim()
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) {
+      throw new Error('No JSON object found in judge response')
+    }
 
-    const parsed = JSON.parse(cleaned)
+    const parsed = JSON.parse(jsonMatch[0])
     return {
       score: Math.min(10, Math.max(0, parsed.score)),
       reason: parsed.reason || ''
