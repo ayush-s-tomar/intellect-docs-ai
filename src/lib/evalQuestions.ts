@@ -6,6 +6,15 @@
 // was entirely open-ended, which only ever tested vector retrieval and
 // wouldn't reveal whether hybrid search is actually pulling its weight.
 // Re-run /eval before and after switching chat/route.ts to compare.
+//
+// NOTE (fix): Q1-Q4 used to carry "expectedKeywords" like ["key","main",
+// "important"] — generic vocabulary about the question itself, not actual
+// content facts. That meant a fully correct, 10/10-judged answer could
+// still fail the keyword check just for not using those specific words
+// (e.g. stating a conclusion directly instead of writing "therefore...").
+// expectedKeywords is only meaningful for exact-lookup questions (proper
+// nouns, numbers, specific terms) — see Q6/Q7 — so open-ended questions
+// now correctly use [] and are scored by the judge alone, same as Q5-Q7.
 
 export interface EvalQuestion {
   question: string
@@ -17,22 +26,22 @@ export interface EvalQuestion {
 export const evalQuestions: EvalQuestion[] = [
   {
     question: "What is the main topic of this document?",
-    expectedKeywords: ["document", "about", "contains"],
+    expectedKeywords: [],  // open ended — scored by Groq only
     topic: "Document overview"
   },
   {
     question: "Summarize the key points in 2-3 sentences.",
-    expectedKeywords: ["key", "main", "important"],
+    expectedKeywords: [],  // open ended — scored by Groq only
     topic: "Summarization"
   },
   {
     question: "What are the most important details mentioned?",
-    expectedKeywords: ["details", "mentioned", "important"],
+    expectedKeywords: [],  // open ended — scored by Groq only
     topic: "Detail extraction"
   },
   {
     question: "What conclusions can be drawn from this document?",
-    expectedKeywords: ["conclusion", "therefore", "shows", "indicates"],
+    expectedKeywords: [],  // open ended — scored by Groq only
     topic: "Reasoning"
   },
   {
