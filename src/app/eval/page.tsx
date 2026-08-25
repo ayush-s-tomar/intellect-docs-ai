@@ -246,9 +246,9 @@ export default function EvalPage() {
                         {r.score}<span className="text-sm text-slate-500">/10</span>
                       </p>
                       <p className={`text-[10px] uppercase tracking-wider ${
-                        r.keywordCheck === 'PASS' ? 'text-emerald-500' : 'text-red-500'
+                        r.keywordCheck === 'PASS' ? 'text-emerald-500' : 'text-amber-500'
                       }`}>
-                        {r.keywordCheck}
+                        keywords: {r.keywordCheck.toLowerCase()}
                       </p>
                     </div>
                   </div>
