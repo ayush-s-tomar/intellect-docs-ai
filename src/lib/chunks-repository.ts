@@ -98,12 +98,40 @@ export function chunksToContext(chunks: ChunkResult[]): string {
   return joined.trim() || 'No context found.'
 }
 
+// Converts each chunk's relevance into a percentage that reflects its
+// share of the total relevance across the returned set, so displayed
+// match percentages sum to ~100% (small rounding drift of +/-1% from
+// Math.round is expected and not a bug).
+//
+// Uses rrf_score, not similarity, as the normalization basis. In hybrid
+// search results, a chunk retrieved purely via full-text match (no
+// vector-search hit) has similarity coalesced to 0 in the SQL RPC even
+// though it has a real, meaningful rrf_score — normalizing on similarity
+// would silently zero out exactly the keyword/proper-noun matches hybrid
+// search exists to surface. similarity is kept as a fallback for
+// non-hybrid callers (e.g. searchChunksVectorOnly / match_chunks), which
+// don't return rrf_score at all.
 export function chunksToSources(chunks: ChunkResult[]) {
-  return chunks.map(c => ({
-    content: c.content,
-    document_id: c.document_id,
-    similarity: (c.similarity && !isNaN(c.similarity) && c.similarity > 0)
-      ? Math.round(c.similarity * 100)
-      : null,
-  }))
+  const scoreOf = (c: ChunkResult) =>
+    typeof c.rrf_score === 'number' && !isNaN(c.rrf_score) && c.rrf_score > 0
+      ? c.rrf_score
+      : c.similarity
+
+  const validScores = chunks
+    .map(scoreOf)
+    .filter((s): s is number => typeof s === 'number' && !isNaN(s) && s > 0)
+
+  const totalScore = validScores.reduce((sum, s) => sum + s, 0)
+
+  return chunks.map(c => {
+    const score = scoreOf(c)
+    return {
+      content: c.content,
+      document_id: c.document_id,
+      similarity:
+        typeof score === 'number' && !isNaN(score) && score > 0 && totalScore > 0
+          ? Math.round((score / totalScore) * 100)
+          : null,
+    }
+  })
 }
