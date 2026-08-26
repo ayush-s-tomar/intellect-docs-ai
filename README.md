@@ -5,11 +5,12 @@
   <img src="https://img.shields.io/github/deployments/ayush-s-tomar/intellect-docs-ai/production?style=for-the-badge&label=vercel" alt="Vercel Deployment"/>
   <a href="https://github.com/ayush-s-tomar/intellect-docs-ai/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ayush-s-tomar/intellect-docs-ai/ci.yml?style=for-the-badge&label=CI" alt="CI"/></a>
   <img src="https://img.shields.io/github/license/ayush-s-tomar/intellect-docs-ai?style=for-the-badge" alt="License"/>
+  <img src="https://img.shields.io/badge/eval%20score-9.7%2F10-blueviolet?style=for-the-badge" alt="Eval Score"/>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js" alt="Next.js"/>
-  <img src="https://img.shields.io/badge/TypeScript-95%25-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript"/>
+  <img src="https://img.shields.io/badge/TypeScript-90%25-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript"/>
   <img src="https://img.shields.io/badge/Supabase-pgvector-3ECF8E?style=flat-square&logo=supabase&logoColor=white" alt="Supabase"/>
   <img src="https://img.shields.io/badge/Groq-GPT--OSS%2020B-F55036?style=flat-square" alt="Groq"/>
   <img src="https://img.shields.io/badge/Cohere-embeddings-39594D?style=flat-square" alt="Cohere"/>
@@ -30,13 +31,26 @@
   <a href="#how-to-run-locally">Run locally</a>
 </p>
 
+### TL;DR
+
+- **Cited, hallucination-checked RAG** — every answer is generated strictly from retrieved chunks and shown alongside its source chunks with similarity scores, so the model can't quietly make things up.
+- **Hybrid retrieval** — pgvector cosine similarity + Postgres full-text search, fused via Reciprocal Rank Fusion, so both semantic matches and exact terms/numbers are reliably retrieved.
+- **Self-graded quality gate, not a static claim** — a built-in LLM-as-judge eval harness (`/eval`) scores every retrieval + answer change against a fixed benchmark; current internal run: 9.7/10 avg, 100% pass rate, backed by a Vitest unit suite for chunking and validation (see [caveat](#rag-quality-evaluation)).
+- **Handled a live production incident** — migrated off a Groq model that was deprecated mid-flight with zero downtime, hardened by CI (lint/type-check/build) on every push.
+
+**Jump to:** [How it works](#how-it-works) · [Engineering decisions](#engineering-decisions--key-challenges) · [Eval results](#rag-quality-evaluation) · [Run locally](#how-to-run-locally)
+
 <p align="center">
   <img src="./assets/askmydocs-demo.gif" alt="AskMyDocs demo — upload a document, ask a question, get a cited answer, and view the eval dashboard" width="800"/>
 </p>
 
 <details>
-<summary><b>🎥 Full video walkthrough</b></summary>
+<summary><b>📷 Screenshot + 🎥 full video walkthrough</b></summary>
 <br/>
+
+<img src="./demo.png" alt="AskMyDocs screenshot — chat view with cited answer and similarity-scored source chunks" width="800"/>
+
+<br/><br/>
 
 https://github.com/user-attachments/assets/ae12af1b-3d89-4094-8c55-4f79a30ad8d7
 
@@ -93,7 +107,7 @@ embedText() — Cohere      hybrid_search_chunks() RPC
   │                         session + doc scoped)
   ▼                                │
 Supabase: documents +              ▼
-chunks (+ embedding_v2)    top-5 matching chunks
+chunks                     top-5 matching chunks
                                     │
                                     ▼
                             Groq (openai/gpt-oss-20b)
@@ -120,9 +134,28 @@ chunks (+ embedding_v2)    top-5 matching chunks
 
 ---
 
+## Engineering Decisions & Key Challenges
+
+- **Diagnosed a query/document embedding asymmetry bug** — questions were being embedded with Cohere's `search_document` input type instead of `search_query`, silently degrading retrieval relevance across the entire pipeline despite chunk embeddings themselves being correct.
+- **Found and fixed a chunk-truncation mismatch** — chunks were stored at ~800 characters but only the first 512 were ever embedded, meaning the embedding didn't represent the back half of many chunks.
+- **Fixed a mid-word chunk-boundary bug** — the overlap buffer used a raw character-count slice with no word-boundary awareness, occasionally splitting a chunk open mid-word; fixed by snapping the slice forward to the next word boundary, with a regression test added to catch it if it recurs.
+- **Built an LLM-as-judge evaluation harness, then found a scoring bug in the judge itself** — the judge was scoring answers against a context slice far shorter than what the answer model actually saw, causing it to falsely penalize correct answers as "not supported by context."
+- **Diagnosed silent reasoning-model token exhaustion** — `openai/gpt-oss-20b` spends part of its token budget on internal reasoning before writing output; under-provisioned `max_tokens` caused it to silently return empty answers on harder questions with no error, only visible via structured logging of `finish_reason`.
+- **Migrated to hybrid search** — combined pgvector cosine similarity with Postgres full-text search via Reciprocal Rank Fusion (RRF), so exact terms, proper nouns, and numeric values that embed poorly semantically are still reliably retrieved.
+- Separated public and admin Supabase clients so a service-role secret can never leak into the browser bundle.
+- Implemented session-scoped multi-user isolation without requiring authentication — zero signup friction while still enforcing real per-user data boundaries.
+- Added rate limiting (Upstash Redis) and an automated uptime keepalive to keep a free-tier deployment stable under real traffic.
+- Set up CI (lint, type-check, build) on every push so regressions are caught before they reach production.
+- Handled Groq's deprecation of `llama-3.1-8b-instant` by migrating the chat and eval pipelines to `openai/gpt-oss-20b` with no downtime, and hardened request validation (Zod) to coerce numeric document IDs defensively at the API boundary.
+
+---
+
+
 ## RAG Quality Evaluation
 
 AskMyDocs ships with a built-in evaluation harness (`/api/eval`, dashboard at `/eval`) that automatically tests retrieval and answer quality against a fixed question set — an actual quality gate for the RAG pipeline, not just a demo.
+
+**Current benchmark: 9.7 / 10 average score, 100% pass rate** (pass = score ≥ 6). This is a *self-assessed* score — the same Groq model family both answers and judges the answers, so treat it as an internal regression signal ("did this change make retrieval or answers worse?") rather than an independent quality certification. It's complemented by a deterministic keyword check per answer and a separate Vitest unit suite (`vitest.config.ts`) covering the chunker and request validation, which don't depend on LLM judgment. The live, always-current eval figures are on the [`/eval` dashboard](https://intellect-docs-ai.vercel.app/eval) — a hardcoded score would go stale the moment retrieval or prompting changes, so treat the line above as a snapshot and the dashboard as ground truth.
 
 <details>
 <summary><b>How the eval pipeline scores each answer</b></summary>
@@ -133,13 +166,11 @@ For each test question:
 2. Generates an answer from those chunks using Groq (`openai/gpt-oss-20b`)
 3. **LLM-as-judge scoring** — a second Groq call grades the answer 0–10 on relevance, factual accuracy against the *same full retrieved context* the answer model saw, and clarity, returning a structured score and a one-line justification
 4. **Keyword validation** — checks the answer for expected keywords as a deterministic check alongside the LLM score
-5. Aggregates results into a summary: average score, pass/fail count (pass = score ≥ 6), pass rate, average chunks retrieved, and a letter grade (A–D)
+5. Aggregates results into a summary: average score, pass/fail count, pass rate, average chunks retrieved, and a letter grade (A–D)
 
 Test questions live in `src/lib/evalQuestions.ts`. One question (a multi-turn follow-up that depends on conversation history) is intentionally excluded from the automated loop via an `automated: false` flag, since a stateless one-shot eval harness can't answer it — it's kept as a manual test case for the chat UI instead.
 
 </details>
-
-**Live benchmark numbers are on the [`/eval` dashboard](https://intellect-docs-ai.vercel.app/eval)** rather than pasted here as a static figure — a hardcoded score would go stale the moment retrieval or prompting changes, and an eval system you can't trust to stay current isn't much of a quality gate.
 
 ---
 
@@ -149,7 +180,7 @@ Test questions live in `src/lib/evalQuestions.ts`. One question (a multi-turn fo
 - **Health check + uptime automation** — `/api/health` pings Supabase and is hit on a schedule, keeping the free-tier Supabase project from auto-pausing due to inactivity.
 - **Separated Supabase clients** — a public client (anon key, respects Row Level Security) and an admin client (service role key, server-only) are exported separately, so a service-role secret can never accidentally ship to the browser bundle.
 - **Continuous Integration** — every push runs an automated GitHub Actions workflow that lints, type-checks, and builds the project, catching errors before they reach production.
-- **Handled a live upstream breaking change** — when Groq deprecated `llama-3.1-8b-instant` in June 2026, the chat and eval pipelines were migrated to `openai/gpt-oss-20b` with no downtime, and request validation was hardened (Zod schema now coerces numeric document IDs defensively at the API boundary rather than rejecting them).
+- **Handled a live upstream breaking change** — when Groq deprecated `llama-3.1-8b-instant` in June 2026, the chat and eval pipelines were migrated to `openai/gpt-oss-20b` with no downtime (details in [Engineering Decisions](#engineering-decisions--key-challenges)).
 
 ---
 
@@ -264,22 +295,6 @@ To deploy your own:
 4. Deploy — done in under 2 minutes
 
 </details>
-
----
-
-## Engineering Decisions & Key Challenges
-
-- **Diagnosed a query/document embedding asymmetry bug** — questions were being embedded with Cohere's `search_document` input type instead of `search_query`, silently degrading retrieval relevance across the entire pipeline despite chunk embeddings themselves being correct.
-- **Found and fixed a chunk-truncation mismatch** — chunks were stored at ~800 characters but only the first 512 were ever embedded, meaning the embedding didn't represent the back half of many chunks.
-- **Fixed a mid-word chunk-boundary bug** — the overlap buffer used a raw character-count slice with no word-boundary awareness, occasionally splitting a chunk open mid-word; fixed by snapping the slice forward to the next word boundary, with a regression test added to catch it if it recurs.
-- **Built an LLM-as-judge evaluation harness, then found a scoring bug in the judge itself** — the judge was scoring answers against a context slice far shorter than what the answer model actually saw, causing it to falsely penalize correct answers as "not supported by context."
-- **Diagnosed silent reasoning-model token exhaustion** — `openai/gpt-oss-20b` spends part of its token budget on internal reasoning before writing output; under-provisioned `max_tokens` caused it to silently return empty answers on harder questions with no error, only visible via structured logging of `finish_reason`.
-- **Migrated to hybrid search** — combined pgvector cosine similarity with Postgres full-text search via Reciprocal Rank Fusion (RRF), so exact terms, proper nouns, and numeric values that embed poorly semantically are still reliably retrieved.
-- Separated public and admin Supabase clients so a service-role secret can never leak into the browser bundle.
-- Implemented session-scoped multi-user isolation without requiring authentication — zero signup friction while still enforcing real per-user data boundaries.
-- Added rate limiting (Upstash Redis) and an automated uptime keepalive to keep a free-tier deployment stable under real traffic.
-- Set up CI (lint, type-check, build) on every push so regressions are caught before they reach production.
-- Handled Groq's deprecation of `llama-3.1-8b-instant` by migrating the chat and eval pipelines to `openai/gpt-oss-20b` with no downtime, and hardened request validation (Zod) to coerce numeric document IDs defensively at the API boundary.
 
 ---
 
