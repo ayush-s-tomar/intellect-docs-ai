@@ -5,7 +5,7 @@
   <img src="https://img.shields.io/github/deployments/ayush-s-tomar/intellect-docs-ai/production?style=for-the-badge&label=vercel" alt="Vercel Deployment"/>
   <a href="https://github.com/ayush-s-tomar/intellect-docs-ai/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ayush-s-tomar/intellect-docs-ai/ci.yml?style=for-the-badge&label=CI" alt="CI"/></a>
   <img src="https://img.shields.io/github/license/ayush-s-tomar/intellect-docs-ai?style=for-the-badge" alt="License"/>
-  <img src="https://img.shields.io/badge/eval%20score-9.7%2F10-blueviolet?style=for-the-badge" alt="Eval Score"/>
+  <a href="https://intellect-docs-ai.vercel.app/eval"><img src="https://img.shields.io/badge/eval-live%20dashboard-blueviolet?style=for-the-badge" alt="Live Eval Dashboard"/></a>
 </p>
 
 <p align="center">
@@ -35,7 +35,7 @@
 
 - **Cited, hallucination-checked RAG** — every answer is generated strictly from retrieved chunks and shown alongside its source chunks with similarity scores, so the model can't quietly make things up.
 - **Hybrid retrieval** — pgvector cosine similarity + Postgres full-text search, fused via Reciprocal Rank Fusion, so both semantic matches and exact terms/numbers are reliably retrieved.
-- **Self-graded quality gate, not a static claim** — a built-in LLM-as-judge eval harness (`/eval`) scores every retrieval + answer change against a fixed benchmark; current internal run: 9.7/10 avg, 100% pass rate, backed by a Vitest unit suite for chunking and validation (see [caveat](#rag-quality-evaluation)).
+- **Self-graded quality gate, not a static claim** — a built-in LLM-as-judge eval harness (`/eval`) scores every retrieval + answer change against a fixed benchmark, backed by a Vitest unit suite for chunking and validation. Current numbers live on the [`/eval` dashboard](https://intellect-docs-ai.vercel.app/eval) — see [caveat](#rag-quality-evaluation) for why no score is hardcoded here.
 - **Handled a live production incident** — migrated off a Groq model that was deprecated mid-flight with zero downtime, hardened by CI (lint/type-check/build) on every push.
 
 **Jump to:** [How it works](#how-it-works) · [Engineering decisions](#engineering-decisions--key-challenges) · [Eval results](#rag-quality-evaluation) · [Run locally](#how-to-run-locally)
@@ -150,12 +150,11 @@ chunks                     top-5 matching chunks
 
 ---
 
-
 ## RAG Quality Evaluation
 
 AskMyDocs ships with a built-in evaluation harness (`/api/eval`, dashboard at `/eval`) that automatically tests retrieval and answer quality against a fixed question set — an actual quality gate for the RAG pipeline, not just a demo.
 
-**Current benchmark: 9.7 / 10 average score, 100% pass rate** (pass = score ≥ 6). This is a *self-assessed* score — the same Groq model family both answers and judges the answers, so treat it as an internal regression signal ("did this change make retrieval or answers worse?") rather than an independent quality certification. It's complemented by a deterministic keyword check per answer and a separate Vitest unit suite (`vitest.config.ts`) covering the chunker and request validation, which don't depend on LLM judgment. The live, always-current eval figures are on the [`/eval` dashboard](https://intellect-docs-ai.vercel.app/eval) — a hardcoded score would go stale the moment retrieval or prompting changes, so treat the line above as a snapshot and the dashboard as ground truth.
+**No score is hardcoded in this README on purpose.** The harness is a *self-assessed* signal — the same Groq model family both answers and judges the answers — so treat any given run as an internal regression check ("did this change make retrieval or answers worse?") rather than an independent quality certification. It's complemented by a deterministic keyword check per answer and a separate Vitest unit suite (`vitest.config.ts`) covering the chunker and request validation, which don't depend on LLM judgment. **The current, always-accurate numbers live on the [`/eval` dashboard](https://intellect-docs-ai.vercel.app/eval)** — a hardcoded score here would go stale the moment retrieval or prompting changes, so that dashboard is the only source of truth for this metric.
 
 <details>
 <summary><b>How the eval pipeline scores each answer</b></summary>
@@ -298,12 +297,21 @@ To deploy your own:
 
 ---
 
+## Roadmap
+
+- [ ] Multi-turn conversation memory in the automated eval loop (currently excluded — see [eval scoring notes](#rag-quality-evaluation))
+- [ ] Independent, non-self-graded quality check (e.g. a different model family judging answers) to complement the current LLM-as-judge signal
+- [ ] Multi-document Q&A (query across more than one uploaded document at once)
+- [ ] Optional persistent accounts for users who want documents to survive across devices
+
+---
+
 ## License
 
 MIT License — see [`LICENSE`](LICENSE) for details.
 
 ## Author
 
-**Ayush Singh Tomar** — [GitHub](https://github.com/ayush-s-tomar)
+**Ayush Singh Tomar** — [GitHub](https://github.com/ayush-s-tomar) · [LinkedIn](https://www.linkedin.com/in/ayushsinghtomar) · [Portfolio](https://ayush-s-tomar.vercel.app)
 
 *Part of my AI developer portfolio — agents and models that do real, measurable work. See also: [SalesAgent](https://github.com/ayush-s-tomar/salesagent), an autonomous B2B lead-research and outreach agent, and [resume-screener-lora](https://github.com/ayush-s-tomar/resume-screener-lora), a LoRA fine-tuned resume screening model.*
