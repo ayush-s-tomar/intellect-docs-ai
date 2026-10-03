@@ -1,6 +1,6 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
-import { embedText } from '@/lib/embeddings'
+import { embedBatch } from '@/lib/embeddings'
 import { chunkText } from '@/lib/chunker'
 import { uploadRatelimit } from '@/lib/ratelimit'
 import { uploadFieldsSchema } from '@/lib/validation'
@@ -10,6 +10,8 @@ import { logger } from '@/lib/logger'
 import Groq from 'groq-sdk'
 
 const groq = new Groq({ apiKey: env.GROQ_API_KEY })
+
+const INSERT_BATCH_SIZE = 96
 
 async function generateSummary(chunks: string[]): Promise<string> {
   try {
@@ -23,12 +25,9 @@ async function generateSummary(chunks: string[]): Promise<string> {
       messages: [
         {
           role: 'system',
-          content: 'Summarize the following document content in exactly 2 sentences. Be concise and factual.'
+          content: 'Summarize the following document content in exactly 2 sentences. Be concise and factual.',
         },
-        {
-          role: 'user',
-          content: preview
-        }
+        { role: 'user', content: preview },
       ],
     })
 
@@ -42,6 +41,8 @@ async function generateSummary(chunks: string[]): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
+  let docId: string | null = null
+
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File
@@ -57,34 +58,41 @@ export async function POST(req: NextRequest) {
     }
     const { session_id: sessionId } = parseResult.data
 
-    const ip = req.headers.get('x-forwarded-for') ??
-               req.headers.get('x-real-ip') ??
-               '127.0.0.1'
+    const ip =
+      req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? '127.0.0.1'
 
-    const { success } = await uploadRatelimit.limit(ip)
-
-    if (!success) {
-      return apiError('RATE_LIMITED', 'Upload limit reached. You can upload up to 5 documents per hour.')
+    // Fail open: if the rate limiter backend is down, log it and let the upload through.
+    try {
+      const { success } = await uploadRatelimit.limit(ip)
+      if (!success) {
+        return apiError(
+          'RATE_LIMITED',
+          'Upload limit reached. You can upload up to 5 documents per hour.'
+        )
+      }
+    } catch (e: any) {
+      logger.warn('upload', 'Rate limiter unreachable, allowing request', {
+        error: String(e),
+        causeCode: e?.cause?.code,
+      })
     }
 
     if (file.type === 'application/pdf') {
-      return apiError('VALIDATION_ERROR', 'Please convert your PDF to a .txt file and upload that instead.')
+      return apiError(
+        'VALIDATION_ERROR',
+        'Please convert your PDF to a .txt file and upload that instead.'
+      )
     }
 
     const text = await file.text()
     const wordCount = text.trim().split(/\s+/).filter(Boolean).length
-
     const chunks = chunkText(text)
 
     const summary = await generateSummary(chunks)
 
     const { data: doc, error: docError } = await supabaseAdmin
       .from('documents')
-      .insert({
-        name: file.name,
-        session_id: sessionId,
-        summary: summary,
-      })
+      .insert({ name: file.name, session_id: sessionId, summary })
       .select()
       .single()
 
@@ -92,21 +100,27 @@ export async function POST(req: NextRequest) {
       logger.error('upload', 'Document insert failed', { error: docError.message, sessionId })
       throw docError
     }
+    docId = doc.id
 
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i]
-      const embedding = await embedText(chunk)
-      const { error: chunkError } = await supabaseAdmin
-        .from('chunks')
-        .insert({
-          document_id: doc.id,
-          content: chunk,
-          embedding_v2: embedding,
-          chunk_index: i,
-          session_id: sessionId,
-        })
+    for (let i = 0; i < chunks.length; i += INSERT_BATCH_SIZE) {
+      const batch = chunks.slice(i, i + INSERT_BATCH_SIZE)
+      const embeddings = await embedBatch(batch)
+
+      const rows = batch.map((content, j) => ({
+        document_id: doc.id,
+        content,
+        embedding_v2: embeddings[j],
+        chunk_index: i + j,
+        session_id: sessionId,
+      }))
+
+      const { error: chunkError } = await supabaseAdmin.from('chunks').insert(rows)
       if (chunkError) {
-        logger.error('upload', 'Chunk insert failed', { error: chunkError.message, sessionId, chunkIndex: i })
+        logger.error('upload', 'Chunk insert failed', {
+          error: chunkError.message,
+          sessionId,
+          batchStart: i,
+        })
         throw chunkError
       }
     }
@@ -118,14 +132,18 @@ export async function POST(req: NextRequest) {
       wordCount,
     })
 
-    return apiSuccess({
-      document: doc,
-      chunksCreated: chunks.length,
-      wordCount,
-      summary,
+    return apiSuccess({ document: doc, chunksCreated: chunks.length, wordCount, summary })
+  } catch (err: any) {
+    // Roll back a half-uploaded document so it doesn't linger in the sidebar.
+    if (docId) {
+      await supabaseAdmin.from('chunks').delete().eq('document_id', docId)
+      await supabaseAdmin.from('documents').delete().eq('id', docId)
+    }
+    logger.error('upload', 'Upload failed', {
+      error: String(err),
+      causeCode: err?.cause?.code,
+      causeMessage: err?.cause?.message,
     })
-
-  } catch (err) {
     return handleApiError(err, 'upload')
   }
 }
