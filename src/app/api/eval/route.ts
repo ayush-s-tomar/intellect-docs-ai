@@ -10,6 +10,57 @@ import { RETRIEVAL } from '@/lib/config'
 
 const groq = new Groq({ apiKey: env.GROQ_API_KEY })
 
+// openai/gpt-oss-20b is a reasoning model: hidden reasoning tokens count
+// against max_tokens. On open-ended questions ("list all names...") the
+// reasoning alone can use the whole budget and the visible answer comes back
+// empty with finish_reason 'length'. We try a normal budget first, then retry
+// once with a much bigger one instead of scoring an empty answer as 0.
+const QA_TOKEN_BUDGETS = [2000, 4000]
+
+async function generateAnswer(
+  question: string,
+  context: string
+): Promise<{ answer: string; finishReason: string | null | undefined }> {
+  let finishReason: string | null | undefined
+
+  for (const budget of QA_TOKEN_BUDGETS) {
+    const completion = await groq.chat.completions.create({
+      model: 'openai/gpt-oss-20b',
+      temperature: 0.2,
+      max_tokens: budget,
+      reasoning_effort: 'low',
+      messages: [
+        {
+          role: 'system',
+          content: `Answer the question using ONLY the following context.
+If the answer is not in the context, say "Not found in document."
+Be concise. Format the answer as short paragraphs or simple bullet lists. Never use markdown tables.
+
+CONTEXT:
+${context}`
+        },
+        {
+          role: 'user',
+          content: question
+        }
+      ],
+    })
+
+    const answer = completion.choices[0]?.message?.content?.trim() || ''
+    finishReason = completion.choices[0]?.finish_reason
+
+    if (answer) return { answer, finishReason }
+
+    console.error('eval: empty answer from QA completion, retrying with bigger budget', {
+      question,
+      finishReason,
+      maxTokens: budget,
+    })
+  }
+
+  return { answer: '', finishReason }
+}
+
 async function scoreAnswer(
   question: string,
   answer: string,
@@ -25,7 +76,7 @@ async function scoreAnswer(
     const completion = await groq.chat.completions.create({
       model: 'openai/gpt-oss-20b',
       temperature: 0,
-      max_tokens: 500,
+      max_tokens: 800,
       reasoning_effort: 'low',
       response_format: { type: 'json_object' },
       messages: [
@@ -117,39 +168,13 @@ export async function POST(req: NextRequest) {
           )
         : 0
 
-      // NOTE: openai/gpt-oss-20b is a reasoning model. It spends part of its
-      // token budget on internal reasoning before writing the visible answer.
-      // With max_tokens too low, easy questions (little reasoning needed)
-      // succeed while harder questions silently return empty content because
-      // the reasoning alone exhausts the budget. reasoning_effort: 'low' caps
-      // how much it reasons, and a higher max_tokens gives it room to still
-      // produce output after reasoning. Same fix already applied to the judge
-      // completion above.
-      const completion = await groq.chat.completions.create({
-        model: 'openai/gpt-oss-20b',
-        temperature: 0.2,
-        max_tokens: 1200,
-        reasoning_effort: 'low',
-        messages: [
-          {
-            role: 'system',
-            content: `Answer the question using ONLY the following context.
-If the answer is not in the context, say "Not found in document."
+      const { answer, finishReason: answerFinishReason } = await generateAnswer(
+        evalQ.question,
+        context
+      )
 
-CONTEXT:
-${context}`
-          },
-          {
-            role: 'user',
-            content: evalQ.question
-          }
-        ],
-      })
-
-      const answer = completion.choices[0]?.message?.content?.trim() || ''
-      const answerFinishReason = completion.choices[0]?.finish_reason
       if (!answer) {
-        console.error('eval: empty answer from QA completion', {
+        console.error('eval: still empty answer after retry', {
           question: evalQ.question,
           finishReason: answerFinishReason,
           chunksRetrieved: finalChunks.length,
