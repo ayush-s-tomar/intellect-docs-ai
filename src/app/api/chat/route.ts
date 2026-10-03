@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     const fullMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
       {
         role: 'system',
-        content: `You are a helpful assistant. Answer the user's question using ONLY the following context from their uploaded document(s). Always mention where in the document you found the answer. Use the prior conversation only to resolve references (e.g. "it", "the second one") — the CONTEXT below is the sole source of truth for facts.
+        content: `You are a helpful assistant. Answer the user's question using ONLY the following context from their uploaded document(s). Always mention where in the document you found the answer. Format answers as short paragraphs or simple bullet lists. Never use markdown tables. Use the prior conversation only to resolve references (e.g. "it", "the second one") — the CONTEXT below is the sole source of truth for facts.
 
 CONTEXT:
 ${context}`
