@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
 import Groq from 'groq-sdk'
 import { embedQuery } from '@/lib/embeddings'
-import { chatRatelimit } from '@/lib/ratelimit'
+import { chatRatelimit, safeLimit } from '@/lib/ratelimit'
 import { chatRequestSchema, formatZodError } from '@/lib/validation'
 import { env } from '@/lib/env'
 import { apiError, handleApiError, ApiHandledError } from '@/lib/api-response'
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
                req.headers.get('x-real-ip') ??
                '127.0.0.1'
 
-    const { success, limit, remaining } = await chatRatelimit.limit(ip)
+    const { success, limit, remaining } = await safeLimit(chatRatelimit, ip)
 
     if (!success) {
       return apiError(
