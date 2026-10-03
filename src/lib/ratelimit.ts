@@ -1,4 +1,4 @@
-﻿import { Ratelimit } from '@upstash/ratelimit'
+import { Ratelimit } from '@upstash/ratelimit'
 import { Redis } from '@upstash/redis'
 import { env } from '@/lib/env'
 import { RATE_LIMIT } from '@/lib/config'
@@ -30,6 +30,7 @@ export async function safeLimit(rl: Ratelimit, identifier: string): Promise<Limi
   try {
     const { success, limit, remaining } = await rl.limit(identifier)
     return { success, limit, remaining }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (e: any) {
     logger.warn('ratelimit', 'Rate limiter unreachable, allowing request', {
       error: String(e),

@@ -1,4 +1,4 @@
-﻿import { env } from '@/lib/env'
+import { env } from '@/lib/env'
 
 type EmbedInputType = 'search_document' | 'search_query'
 
@@ -27,6 +27,7 @@ async function embedMany(texts: string[], inputType: EmbedInputType): Promise<nu
       }),
       signal: AbortSignal.timeout(20000),
     })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (e: any) {
     // Network-level failure: DNS, timeout, blocked host.
     throw new Error(`Cohere unreachable: ${e?.cause?.code ?? e?.name ?? e?.message}`)

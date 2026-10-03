@@ -1,4 +1,4 @@
-﻿import { NextRequest } from 'next/server'
+import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { embedBatch } from '@/lib/embeddings'
 import { chunkText } from '@/lib/chunker'
@@ -70,6 +70,7 @@ export async function POST(req: NextRequest) {
           'Upload limit reached. You can upload up to 5 documents per hour.'
         )
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       logger.warn('upload', 'Rate limiter unreachable, allowing request', {
         error: String(e),
@@ -133,6 +134,7 @@ export async function POST(req: NextRequest) {
     })
 
     return apiSuccess({ document: doc, chunksCreated: chunks.length, wordCount, summary })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (err: any) {
     // Roll back a half-uploaded document so it doesn't linger in the sidebar.
     if (docId) {
