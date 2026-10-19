@@ -1,10 +1,10 @@
-﻿import { supabaseAdmin } from '@/lib/supabase-admin'
+import { supabaseAdmin } from '@/lib/supabase-admin'
 import { logger } from '@/lib/logger'
 
 export interface ChunkResult {
   content: string
   document_id: number
-  similarity?: number
+  similarity?: number | null
   rrf_score?: number
 }
 
@@ -16,19 +16,10 @@ interface SearchParams {
   docIds: number[]
 }
 
-// A chunk is only usable if it has non-empty content. The hybrid RPC's
-// FULL OUTER JOIN can produce rows where content is null/empty for edge
-// cases (e.g. a text-search-only match whose vector leg didn't populate
-// content correctly). Array length alone isn't a reliable "did retrieval
-// work" signal — we need to check the content itself.
-function hasUsableContent(chunks: ChunkResult[] | null): chunks is ChunkResult[] {
-  return !!chunks && chunks.some(c => c.content && c.content.trim().length > 0)
-}
-
 export async function searchChunksHybrid(params: SearchParams): Promise<ChunkResult[]> {
   const { queryText, queryEmbedding, matchCount, sessionId, docIds } = params
 
-  const { data: chunks, error } = await supabaseAdmin.rpc('hybrid_search_chunks', {
+  const { data, error } = await supabaseAdmin.rpc('hybrid_search_chunks', {
     query_text: queryText,
     query_embedding: queryEmbedding,
     match_count: matchCount,
@@ -40,18 +31,16 @@ export async function searchChunksHybrid(params: SearchParams): Promise<ChunkRes
     logger.error('chunks-repository', 'Hybrid search RPC failed', { error: error.message, sessionId })
   }
 
-  if (hasUsableContent(chunks)) {
-    // Drop any individual rows with empty content rather than passing
-    // them through — a partially-empty result set shouldn't leak blanks
-    // into the context sent to the LLM.
-    const usable = (chunks as ChunkResult[]).filter(c => c.content && c.content.trim().length > 0)
-    return usable
-  }
+  // Drop rows with empty content so blanks never leak into the LLM context.
+  const usable = ((data ?? []) as ChunkResult[]).filter(c => c.content && c.content.trim().length > 0)
+  if (usable.length > 0) return usable
 
+  // Degraded path (RPC failure, or no rows at all): return the first N chunks
+  // of the selected documents, unranked. Logged so it is visible, never silent.
   logger.warn('chunks-repository', 'Hybrid search returned no usable content, falling back', {
     sessionId,
     docIds,
-    rawResultCount: chunks?.length ?? 0,
+    rawResultCount: data?.length ?? 0,
   })
   return fallbackFetchChunks(sessionId, docIds, matchCount)
 }
@@ -98,40 +87,18 @@ export function chunksToContext(chunks: ChunkResult[]): string {
   return joined.trim() || 'No context found.'
 }
 
-// Converts each chunk's relevance into a percentage that reflects its
-// share of the total relevance across the returned set, so displayed
-// match percentages sum to ~100% (small rounding drift of +/-1% from
-// Math.round is expected and not a bug).
-//
-// Uses rrf_score, not similarity, as the normalization basis. In hybrid
-// search results, a chunk retrieved purely via full-text match (no
-// vector-search hit) has similarity coalesced to 0 in the SQL RPC even
-// though it has a real, meaningful rrf_score — normalizing on similarity
-// would silently zero out exactly the keyword/proper-noun matches hybrid
-// search exists to surface. similarity is kept as a fallback for
-// non-hybrid callers (e.g. searchChunksVectorOnly / match_chunks), which
-// don't return rrf_score at all.
+// The percentage shown next to each source is the chunk's real cosine
+// similarity to the query (pgvector, 0-100). It is NOT the RRF score: RRF
+// scores are rank-based and nearly identical across the top results, so they
+// say how results were ordered, not how close each one is. Chunks with no
+// embedding similarity (e.g. the unranked fallback path) show null.
 export function chunksToSources(chunks: ChunkResult[]) {
-  const scoreOf = (c: ChunkResult) =>
-    typeof c.rrf_score === 'number' && !isNaN(c.rrf_score) && c.rrf_score > 0
-      ? c.rrf_score
-      : c.similarity
-
-  const validScores = chunks
-    .map(scoreOf)
-    .filter((s): s is number => typeof s === 'number' && !isNaN(s) && s > 0)
-
-  const totalScore = validScores.reduce((sum, s) => sum + s, 0)
-
-  return chunks.map(c => {
-    const score = scoreOf(c)
-    return {
-      content: c.content,
-      document_id: c.document_id,
-      similarity:
-        typeof score === 'number' && !isNaN(score) && score > 0 && totalScore > 0
-          ? Math.round((score / totalScore) * 100)
-          : null,
-    }
-  })
+  return chunks.map(c => ({
+    content: c.content,
+    document_id: c.document_id,
+    similarity:
+      typeof c.similarity === 'number' && Number.isFinite(c.similarity) && c.similarity > 0
+        ? Math.min(100, Math.round(c.similarity * 100))
+        : null,
+  }))
 }
