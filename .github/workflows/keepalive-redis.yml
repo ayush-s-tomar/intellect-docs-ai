@@ -1,13 +1,19 @@
-name: Redis Keep-Alive
+name: Keep-alive (Redis)
 
+# Pings Upstash Redis twice a week so the free-tier database is never archived
+# for inactivity. Also runnable manually from the Actions tab.
 on:
   schedule:
     - cron: "0 6 * * 1,4"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
       - name: Ping Upstash Redis
         env:
@@ -18,6 +24,7 @@ jobs:
             echo "Missing Upstash secrets"
             exit 1
           fi
-          curl --fail --silent --show-error \
+          curl --fail --silent --show-error --max-time 30 \
             -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN" \
             "$UPSTASH_REDIS_REST_URL/ping"
+          echo

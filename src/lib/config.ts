@@ -1,4 +1,4 @@
-﻿export const CHUNKING = {
+export const CHUNKING = {
   CHUNK_SIZE: 800,
   OVERLAP: 150,
   MIN_CHUNK_LENGTH: 40,
@@ -24,6 +24,11 @@ export const RATE_LIMIT = {
   },
   UPLOAD: {
     MAX_REQUESTS: 20,
+    WINDOW: '60 m',
+  },
+  // One eval run makes 16+ Groq calls, so it is limited much harder than chat.
+  EVAL: {
+    MAX_REQUESTS: 5,
     WINDOW: '60 m',
   },
 } as const

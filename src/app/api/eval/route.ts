@@ -6,7 +6,8 @@ import { env } from '@/lib/env'
 import { apiSuccess, apiError, handleApiError } from '@/lib/api-response'
 import { embedQuery } from '@/lib/embeddings'
 import { searchChunksHybrid, chunksToContext } from '@/lib/chunks-repository'
-import { RETRIEVAL } from '@/lib/config'
+import { evalRatelimit, safeLimit, getClientIp } from '@/lib/ratelimit'
+import { RETRIEVAL, RATE_LIMIT } from '@/lib/config'
 import { logger } from '@/lib/logger'
 
 // The eval runs every automated question as a QA call plus a judge call and
@@ -256,6 +257,15 @@ export async function POST(req: NextRequest) {
     const docId = parseInt(document_id, 10)
     if (isNaN(docId)) {
       return apiError('VALIDATION_ERROR', 'document_id must be a valid number')
+    }
+
+    // One run makes 16+ Groq calls, so it is limited far harder than chat.
+    const { success: allowed } = await safeLimit(evalRatelimit, getClientIp(req))
+    if (!allowed) {
+      return apiError(
+        'RATE_LIMITED',
+        `Eval limit reached. Each run makes many model calls, so it is limited to ${RATE_LIMIT.EVAL.MAX_REQUESTS} runs per hour.`
+      )
     }
 
     const results: EvalRow[] = []

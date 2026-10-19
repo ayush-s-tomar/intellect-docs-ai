@@ -1,0 +1,40 @@
+name: Keep-alive (Supabase)
+
+# Pings the app's /api/health endpoint every 3 days so the Supabase free-tier
+# project never sits idle long enough to auto-pause. Also runnable manually
+# from the Actions tab. Note: GitHub disables scheduled workflows after 60 days
+# without repository activity; any commit re-arms them.
+on:
+  schedule:
+    - cron: '0 9 */3 * *'   # every 3 days at 09:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping health endpoint
+        env:
+          APP_HEALTH_URL: ${{ secrets.APP_HEALTH_URL }}
+        run: |
+          if [ -z "$APP_HEALTH_URL" ]; then
+            echo "Missing APP_HEALTH_URL secret"
+            exit 1
+          fi
+
+          status=$(curl --silent --show-error --max-time 30 -o response.txt -w "%{http_code}" "$APP_HEALTH_URL") || status=000
+          echo "HTTP status: $status"
+          echo "Response body:"
+          cat response.txt || true
+          echo
+
+          if [ "$status" -ne 200 ]; then
+            echo "Health check failed with status $status"
+            exit 1
+          fi
+
+          echo "Supabase project pinged successfully"

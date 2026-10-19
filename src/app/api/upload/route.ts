@@ -2,11 +2,12 @@ import { NextRequest } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { embedBatch } from '@/lib/embeddings'
 import { chunkText } from '@/lib/chunker'
-import { uploadRatelimit } from '@/lib/ratelimit'
+import { uploadRatelimit, safeLimit, getClientIp } from '@/lib/ratelimit'
 import { uploadFieldsSchema } from '@/lib/validation'
 import { env } from '@/lib/env'
 import { apiSuccess, apiError, handleApiError } from '@/lib/api-response'
 import { logger } from '@/lib/logger'
+import { UPLOAD, RATE_LIMIT } from '@/lib/config'
 import Groq from 'groq-sdk'
 
 const groq = new Groq({ apiKey: env.GROQ_API_KEY })
@@ -41,14 +42,14 @@ async function generateSummary(chunks: string[]): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  let docId: string | null = null
+  let docId: string | number | null = null
 
   try {
     const formData = await req.formData()
-    const file = formData.get('file') as File
-    const rawSessionId = formData.get('session_id') as string
+    const file = formData.get('file')
+    const rawSessionId = formData.get('session_id')
 
-    if (!file) {
+    if (!(file instanceof File)) {
       return apiError('VALIDATION_ERROR', 'No file uploaded')
     }
 
@@ -58,24 +59,21 @@ export async function POST(req: NextRequest) {
     }
     const { session_id: sessionId } = parseResult.data
 
-    const ip =
-      req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? '127.0.0.1'
+    // Fails open if Redis is down (logged inside safeLimit).
+    const { success } = await safeLimit(uploadRatelimit, getClientIp(req))
+    if (!success) {
+      return apiError(
+        'RATE_LIMITED',
+        `Upload limit reached. You can upload up to ${RATE_LIMIT.UPLOAD.MAX_REQUESTS} documents per hour.`
+      )
+    }
 
-    // Fail open: if the rate limiter backend is down, log it and let the upload through.
-    try {
-      const { success } = await uploadRatelimit.limit(ip)
-      if (!success) {
-        return apiError(
-          'RATE_LIMITED',
-          'Upload limit reached. You can upload up to 5 documents per hour.'
-        )
-      }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (e: any) {
-      logger.warn('upload', 'Rate limiter unreachable, allowing request', {
-        error: String(e),
-        causeCode: e?.cause?.code,
-      })
+    // The browser also checks these, but the server must not trust the client.
+    if (file.size > UPLOAD.MAX_FILE_SIZE_BYTES) {
+      return apiError(
+        'VALIDATION_ERROR',
+        `File too large. Maximum size is ${UPLOAD.MAX_FILE_SIZE_BYTES / 1024 / 1024}MB.`
+      )
     }
 
     if (file.type === 'application/pdf') {
@@ -85,9 +83,20 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const text = await file.text()
+    // PDFs are converted to .txt in the browser, so only text formats arrive here.
+    if (!/\.(txt|md)$/i.test(file.name)) {
+      return apiError('VALIDATION_ERROR', 'Only .txt and .md files are supported.')
+    }
+
+    // Postgres text columns cannot store NUL characters, which some PDF
+    // extractions produce; leaving them in turns the insert into a 500.
+    const text = (await file.text()).replace(/\u0000/g, '')
     const wordCount = text.trim().split(/\s+/).filter(Boolean).length
     const chunks = chunkText(text)
+
+    if (chunks.length === 0) {
+      return apiError('VALIDATION_ERROR', 'The file contains no readable text.')
+    }
 
     const summary = await generateSummary(chunks)
 
@@ -134,17 +143,21 @@ export async function POST(req: NextRequest) {
     })
 
     return apiSuccess({ document: doc, chunksCreated: chunks.length, wordCount, summary })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (err: any) {
+  } catch (err) {
     // Roll back a half-uploaded document so it doesn't linger in the sidebar.
     if (docId) {
-      await supabaseAdmin.from('chunks').delete().eq('document_id', docId)
-      await supabaseAdmin.from('documents').delete().eq('id', docId)
+      try {
+        await supabaseAdmin.from('chunks').delete().eq('document_id', docId)
+        await supabaseAdmin.from('documents').delete().eq('id', docId)
+      } catch (cleanupErr) {
+        logger.error('upload', 'Rollback failed', { error: String(cleanupErr), docId })
+      }
     }
+    const cause = (err as { cause?: { code?: string; message?: string } } | null)?.cause
     logger.error('upload', 'Upload failed', {
       error: String(err),
-      causeCode: err?.cause?.code,
-      causeMessage: err?.cause?.message,
+      causeCode: cause?.code,
+      causeMessage: cause?.message,
     })
     return handleApiError(err, 'upload')
   }

@@ -23,6 +23,21 @@ export const uploadRatelimit = new Ratelimit({
   prefix: 'askmydocs:upload',
 })
 
+export const evalRatelimit = new Ratelimit({
+  redis,
+  limiter: Ratelimit.slidingWindow(RATE_LIMIT.EVAL.MAX_REQUESTS, RATE_LIMIT.EVAL.WINDOW),
+  analytics: true,
+  prefix: 'askmydocs:eval',
+})
+
+// x-forwarded-for can hold a comma-separated proxy chain; the first entry is
+// the original client. Using the raw header would key the limiter on the whole
+// chain string.
+export function getClientIp(req: Request): string {
+  const forwarded = req.headers.get('x-forwarded-for')
+  return forwarded?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || '127.0.0.1'
+}
+
 type LimitResult = { success: boolean; limit: number; remaining: number }
 
 // Fail open: if Redis is unreachable, log it and allow the request.
