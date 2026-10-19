@@ -1,317 +1,234 @@
 # AskMyDocs: AI Document Q&A with Cited Answers
 
-<p align="center">
-  <a href="https://intellect-docs-ai.vercel.app"><img src="https://img.shields.io/badge/demo-live-brightgreen?style=for-the-badge" alt="Live Demo"/></a>
-  <img src="https://img.shields.io/github/deployments/ayush-s-tomar/intellect-docs-ai/production?style=for-the-badge&label=vercel" alt="Vercel Deployment"/>
-  <a href="https://github.com/ayush-s-tomar/intellect-docs-ai/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ayush-s-tomar/intellect-docs-ai/ci.yml?style=for-the-badge&label=CI" alt="CI"/></a>
-  <img src="https://img.shields.io/github/license/ayush-s-tomar/intellect-docs-ai?style=for-the-badge" alt="License"/>
-</p>
+[![CI](https://github.com/ayush-s-tomar/intellect-docs-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/ayush-s-tomar/intellect-docs-ai/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/ayush-s-tomar/intellect-docs-ai)](LICENSE)
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://intellect-docs-ai.vercel.app)
+![Next.js](https://img.shields.io/badge/Next.js-16-black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6)
+![Supabase](https://img.shields.io/badge/Supabase-pgvector-3ecf8e)
+![Groq](https://img.shields.io/badge/LLM-Groq-f55036)
+![Cohere](https://img.shields.io/badge/Embeddings-Cohere-39594d)
+![Upstash](https://img.shields.io/badge/Rate%20limit-Upstash%20Redis-00e9a3)
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Next.js-15-black?style=flat-square&logo=next.js" alt="Next.js"/>
-  <img src="https://img.shields.io/github/languages/top/ayush-s-tomar/intellect-docs-ai?style=flat-square&logo=typescript&logoColor=white" alt="Top language"/>
-  <img src="https://img.shields.io/badge/Supabase-pgvector-3ECF8E?style=flat-square&logo=supabase&logoColor=white" alt="Supabase"/>
-  <img src="https://img.shields.io/badge/Groq-GPT--OSS%2020B-F55036?style=flat-square" alt="Groq"/>
-  <img src="https://img.shields.io/badge/Cohere-embeddings-39594D?style=flat-square" alt="Cohere"/>
-  <img src="https://img.shields.io/badge/Upstash-Redis-00E9A3?style=flat-square&logo=redis&logoColor=white" alt="Upstash Redis"/>
-  <img src="https://img.shields.io/github/last-commit/ayush-s-tomar/intellect-docs-ai?style=flat-square" alt="Last Commit"/>
-</p>
+Upload a document and ask questions about it in plain English.
+Answers are generated only from your document and shown next to the exact chunks they came from, with each chunk's cosine similarity.
 
-<p align="center">
-  Upload a document and ask questions about it in plain English.<br/>
-  Every answer is generated strictly from your document and shown next to the exact chunks it came from, with similarity scores.
-</p>
+**[Live demo](https://intellect-docs-ai.vercel.app)** · [How it works](#how-it-works) · [Engineering decisions](#engineering-decisions) · [Eval](#rag-quality-evaluation) · [Run locally](#run-locally) · [Limitations](#known-limitations)
 
-<p align="center">
-  <a href="https://intellect-docs-ai.vercel.app"><b>🔗 Live Demo</b></a> ·
-  <a href="#how-it-works">How it works</a> ·
-  <a href="#engineering-decisions--key-challenges">Engineering decisions</a> ·
-  <a href="#rag-quality-evaluation">Eval</a> ·
-  <a href="#how-to-run-locally">Run locally</a>
-</p>
-
-<p align="center">
-  <img src="./assets/askmydocs-demo.gif" alt="AskMyDocs demo: upload a document, ask a question, get a cited answer, and view the eval dashboard" width="800"/>
-</p>
-
-<details>
-<summary><b>📷 Screenshot + 🎥 full video walkthrough</b></summary>
-<br/>
-
-<img src="./demo.png" alt="AskMyDocs screenshot: chat view with a cited answer and similarity-scored source chunks" width="800"/>
-
-<br/><br/>
-
-https://github.com/user-attachments/assets/ae12af1b-3d89-4094-8c55-4f79a30ad8d7
-
-</details>
-
----
+![AskMyDocs demo: upload, ask, get a cited answer, run the eval](assets/askmydocs-demo.gif)
 
 ## Highlights
 
-* **Grounded, cited answers.** Each answer is generated only from retrieved chunks and displayed with those chunks and their match scores, so you can see why the model said what it said.
-* **Hybrid retrieval.** pgvector cosine similarity and Postgres full-text search are fused with Reciprocal Rank Fusion, so both semantic matches and exact terms, names and numbers are found.
-* **Built-in eval harness.** An LLM-as-judge pipeline (`/eval`) plus a deterministic keyword check scores retrieval and answer quality, backed by a Vitest suite for the chunker and request validation.
-* **Production hygiene.** CI on every push, Redis-backed rate limiting that fails open, scheduled keep-alive jobs, and a zero-downtime migration off a deprecated model.
+- **Grounded, cited answers.** The model sees labelled excerpts (`[Chunk 1]` to `[Chunk 5]`), cites them as `(Chunk N)`, and the UI lists the same chunks with their similarity, so every claim can be traced to text.
+- **Hybrid retrieval.** pgvector cosine similarity and Postgres full-text search are fused with Reciprocal Rank Fusion, so both semantic matches and exact terms, names and numbers are found.
+- **A built-in eval harness** with an LLM judge plus deterministic checks, honest about what it can and cannot prove (see [Eval](#rag-quality-evaluation)).
+- **Production hygiene.** CI runs tests, lint, type-check and build on every push. Rate limiting fails open. Server-side input validation. Row Level Security on. Production dependencies audit clean.
 
 ## Why this exists
 
-Most "chat with your PDF" demos either hallucinate past the source or hide why an answer was given. AskMyDocs shows its work: every chunk is visible with its similarity score, and a built-in eval harness lets retrieval and prompt changes be regression-tested instead of eyeballed.
+Most "chat with your PDF" demos either hallucinate past the source or hide why an answer was given. AskMyDocs shows its work: every retrieved chunk is visible with its similarity score, and a built-in eval lets retrieval and prompt changes be regression-tested instead of eyeballed.
 
 ## Features
 
-* Upload `.txt` or `.pdf` files and pick a document from the sidebar
-* Ask questions in natural language and get streaming answers rendered as markdown
-* Inspect the source chunks behind every answer, with similarity percentages
-* Run the built-in eval from the `/eval` dashboard
-* Anonymous, session-scoped multi-user isolation with no signup
-* Rate-limited API with automated uptime keep-alives
+- Upload `.txt`, `.md` or `.pdf` (PDF text is extracted in the browser) up to 5 MB, and pick documents from the sidebar
+- Streaming answers rendered as markdown, with `(Chunk N)` citations
+- Inspect the source chunks behind every answer, with similarity percentages
+- Multi-turn follow-ups (the last 6 messages are used to resolve references such as "it")
+- Export a chat, delete documents, and run the eval from `/eval`
+- Anonymous, session-scoped isolation with no signup
 
----
-
-## Tech Stack
+## Tech stack
 
 | Layer | Tech |
-|---|---|
-| Frontend | Next.js 15, TypeScript, Tailwind CSS |
-| LLM | Groq API (`openai/gpt-oss-20b`) |
+| --- | --- |
+| Frontend | Next.js 16 (App Router), TypeScript, Tailwind CSS 4 |
+| LLM | Groq API, `openai/gpt-oss-20b` |
 | Embeddings | Cohere `embed-english-light-v3.0` (384-dim), asymmetric query/document encoding |
 | Database | Supabase (PostgreSQL + pgvector) |
-| Retrieval | Hybrid search: pgvector cosine similarity + Postgres full-text search, fused via RRF |
-| Rate limiting | Upstash Redis |
-| CI / Deployment | GitHub Actions, Vercel |
-
-<details>
-<summary><b>Architecture diagram</b></summary>
-
-```
-Upload                          Query
-  │                                │
-  ▼                                ▼
-chunker.ts              useSessionId.ts (anon session)
-(sentence-aware,                  │
- 800-char chunks,                 ▼
- 150-char overlap,          embedQuery() (Cohere)
- word-boundary safe)      (search_query input_type)
-  │                                │
-  ▼                                ▼
-embedText() (Cohere)      hybrid_search_chunks() RPC
-(search_document          (pgvector cosine + full-text
- input_type, batched)      search, fused via RRF,
-  │                         session + doc scoped)
-  ▼                                │
-Supabase: documents +              ▼
-chunks                     top-5 matching chunks
-                                    │
-                                    ▼
-                            Groq (openai/gpt-oss-20b)
-                            streams answer from context
-                                    │
-                                    ▼
-                            UI: answer + source chunks
-                            shown with match %
-```
-
-</details>
-
----
+| Retrieval | Hybrid: pgvector cosine + Postgres full-text, fused with RRF (k = 60) |
+| Rate limiting | Upstash Redis (sliding window) |
+| Validation | Zod |
+| Tests / CI / hosting | Vitest, GitHub Actions, Vercel |
 
 ## How it works
 
-1. **Upload.** `chunker.ts` splits the document into sentence-aware chunks (~800 characters, 150-character overlap). Oversized sentences are hard-split rather than truncated, and overlap snaps to word boundaries so chunks never open mid-word.
-2. **Embed and store.** Each chunk is embedded with Cohere (`input_type: search_document`) and stored in Supabase with its 384-dimension vector.
-3. **Retrieve.** The question is embedded with `input_type: search_query`, because Cohere's model is asymmetric. The `hybrid_search_chunks` RPC fuses vector similarity with full-text search (`websearch_to_tsquery`) via RRF, scoped to the caller's session and selected document.
-4. **Answer.** The top 5 chunks go to Groq as context, and the answer streams back based strictly on them.
-5. **Show the work.** The UI renders the markdown answer and the source chunks with a similarity percentage for each.
+```mermaid
+flowchart LR
+  U["Upload"] --> C["Chunk (~800 chars, 150 overlap)"]
+  C --> E1["Cohere embed: search_document"]
+  E1 --> DB[("Supabase: chunks + vectors + tsvector")]
+  Q["Question"] --> E2["Cohere embed: search_query"]
+  E2 --> H["hybrid_search_chunks RPC"]
+  DB --> H
+  H --> T["Top 5 chunks"]
+  T --> L["Groq gpt-oss-20b, streamed"]
+  L --> A["Answer with (Chunk N) citations + source cards"]
+```
 
----
+1. **Upload.** `chunker.ts` splits text into sentence-aware chunks (about 800 characters, 150-character overlap). Oversized "sentences" (common in PDF text without punctuation) are split at whitespace or hard-cut, never truncated, and the overlap snaps to a word boundary so a chunk never opens mid-word.
+2. **Embed and store.** Each chunk is embedded with `input_type: search_document` and stored with its 384-dimension vector. A generated `tsvector` column keeps full-text search in sync automatically.
+3. **Retrieve.** The question is embedded with `input_type: search_query` (Cohere's model is asymmetric). The `hybrid_search_chunks` RPC takes up to 20 candidates from each leg, ranks them separately, fuses the ranks with RRF, and returns the top 5. Every query is scoped to the caller's session and the selected documents.
+4. **Answer.** The 5 chunks go to Groq as labelled excerpts. The answer streams back, preceded by a sources event.
+5. **Show the work.** The UI renders the markdown answer and the chunk cards with real cosine similarity.
 
-## Engineering Decisions & Key Challenges
+## Engineering decisions
 
 **Retrieval quality**
-* **Query/document embedding asymmetry.** Questions were being embedded with Cohere's `search_document` input type instead of `search_query`, which quietly degraded retrieval across the whole pipeline.
-* **Chunk truncation mismatch.** Chunks were stored at ~800 characters but only the first 512 were embedded, so many embeddings ignored the back half of their chunk.
-* **Mid-word chunk boundaries.** The overlap buffer sliced by raw character count; it now snaps to the next word boundary, with a regression test.
-* **Hybrid search.** Added full-text search fused with vector search via RRF, so proper nouns and numbers that embed poorly are still retrieved.
+- **Query/document asymmetry.** Questions were once embedded as `search_document`, which quietly degraded retrieval everywhere. They now use `search_query`.
+- **Truncation mismatch.** Chunks were stored at about 800 characters but only the first 512 were embedded. The embed limit now exceeds chunk size, and the chunker hard-splits oversized text so nothing is truncated.
+- **Mid-word boundaries.** The overlap now snaps to whitespace (including newlines), with a regression test.
+- **Hybrid search.** Full-text search catches names and numbers that embed poorly. The full-text leg ORs the query terms: `websearch_to_tsquery` ANDs them, which returns nothing for a natural-language question and silently turns hybrid into vector-only.
+- **Honest similarity.** The percentage on each source card is real cosine similarity. It used to show each chunk's share of the RRF score, which is rank-based and nearly identical across the top results.
 
-**Eval and LLM behavior**
-* **Judge bug.** The LLM judge scored answers against a much shorter context slice than the answer model saw, so it falsely penalized correct answers. It now sees the same context.
-* **Reasoning-model token exhaustion.** `gpt-oss-20b` spends part of `max_tokens` on hidden reasoning, so small budgets returned empty answers with no error. This was only visible by logging `finish_reason`; calls now retry once with a larger budget.
-* **Free-tier rate limits.** The eval's back-to-back calls hit Groq's tokens-per-minute cap, and failed judge calls were scored 0. The harness now retries on 429s, waits for the "try again in Ns" hint Groq returns, and requests smaller token budgets.
+**LLM behaviour and eval**
+- **Reasoning-model token exhaustion.** `gpt-oss-20b` spends part of `max_tokens` on hidden reasoning, so small budgets returned empty answers with no error. This was only visible by logging `finish_reason`. The eval retries once with a larger budget, and the chat route logs abnormal completions and tells the user when a response is empty or cut off.
+- **Judge sees the same context.** The judge used to see a truncated slice of the context, so it penalised correct answers. It now sees exactly what the answerer saw.
+- **No reward for lazy refusals.** A "not found" answer scores high only on the deliberate grounding probe. On every other question the judge must check whether the context really lacked the answer.
+- **Free-tier rate limits.** The eval waits out Groq's 429 hints, and a failed judge call is reported as unscored instead of being counted as 0.
 
 **Reliability and security**
-* **Zero-downtime model migration.** When Groq deprecated `llama-3.1-8b-instant`, chat and eval were moved to `openai/gpt-oss-20b`, and Zod validation now coerces numeric document IDs at the API boundary.
-* **Fail-open rate limiter.** A Redis outage (an expired free-tier database) used to break uploads and chat. The limiter now fails open, and uploads roll back cleanly on failure.
-* **Separated Supabase clients.** The service-role key lives only in a server-side admin client and can never reach the browser bundle.
-* **Session isolation without auth.** Every read and write is scoped by an anonymous `session_id`, giving real per-user data boundaries with no signup.
+- **Zero-downtime model migration** when Groq deprecated `llama-3.1-8b-instant`.
+- **Fail-open rate limiter.** A Redis outage (an expired free-tier database) once broke uploads and chat. The limiter now logs and allows the request.
+- **Server-side validation.** Upload size and type, empty files, NUL characters, UUID session ids, bounded message length and document-id counts. Raw internal error text never reaches the browser.
+- **Row Level Security enabled** on both tables with no policies, and all access goes through server routes using the service-role key (`server-only`). The browser holds no Supabase key.
+- **SSE parsing buffers** until a full event arrives, so a network read that splits an event does not drop text.
 
----
+## RAG quality evaluation
 
-## RAG Quality Evaluation
+`/eval` runs 8 automated questions against one selected document. An LLM judge scores each answer 0 to 10, and deterministic checks run without any LLM:
 
-AskMyDocs ships with a built-in evaluation harness (`/api/eval`, dashboard at [`/eval`](https://intellect-docs-ai.vercel.app/eval)) that tests retrieval and answer quality against a fixed question set.
+- `contains_number`: the answer must contain a digit
+- `not_found`: for a deliberate grounding probe whose correct answer is "not found"
 
-**Latest recorded run (Oct 2026):** Grade **B**, **6.7/10** average, **86%** pass rate (6 of 7 questions scoring 6/10 or higher), on one real job-description document.
+Open-ended questions report `n/a` rather than a fake pass.
 
-**How to read that number.** It is a self-assessed signal: the same Groq model family answers and judges. It comes from one document and seven questions, so treat it as an internal regression check ("did this change make things worse?"), not an independent benchmark. It is paired with a deterministic keyword check and a Vitest suite that don't depend on LLM judgment. The live dashboard is always the current source of truth.
+**Latest recorded run (Oct 2026):** Grade **B**, **7.1/10** average, **6 of 8** questions at 6/10 or higher (75%), deterministic checks 3/3, 0 unscored. Document: a 6-week CAT exam study guide (a text file).
 
-<details>
-<summary><b>How the eval pipeline scores each answer</b></summary>
+| Question | Score |
+| --- | --- |
+| Main topic | 10 |
+| Summarize key points | 10 |
+| Most important details | 1 |
+| Conclusions | 10 |
+| Numbers, dates, statistics | 10 |
+| Proper nouns (list them) | 0 |
+| Specific numbers / quantities | 6 |
+| Grounding probe (should be "not found") | 10 |
 
-For each test question:
+**How to read that number.** It is a self-graded regression signal, not a benchmark. The same Groq model family answers and judges, the run covers one document and eight questions, and the eval's QA prompt is simpler than the production chat prompt. The two failures were not retrieval failures: the judge noted the context contained the relevant text, and the model answered "Not found" anyway. Aggregate questions ("list all names", "most important details") are also a structural weakness of top-5 chunk retrieval, which cannot cover a whole document. The numbers question scored 6 because the answer mostly listed section numbers rather than real quantities, which the digit check cannot distinguish. The live `/eval` dashboard is the source of truth.
 
-1. Embeds the question with `embedQuery` and retrieves the top 5 chunks through the same `hybrid_search_chunks` RPC used in production
-2. Generates an answer from those chunks with Groq (`openai/gpt-oss-20b`)
-3. **LLM-as-judge.** A second Groq call scores the answer 0 to 10 on relevance, accuracy against the same retrieved context the answer model saw, and clarity, returning a score and a one-line reason
-4. **Keyword check.** Verifies expected keywords appear in the answer, as a deterministic signal beside the LLM score
-5. Aggregates average score, pass/fail count, pass rate, average chunks retrieved, and a letter grade (A to D)
+## Reliability
 
-Rate-limited calls are retried automatically. Test questions live in `src/lib/evalQuestions.ts`. One multi-turn follow-up question is excluded from the automated loop (`automated: false`) because a stateless harness can't answer it; it stays as a manual chat test.
+| Limit | Value |
+| --- | --- |
+| Chat | 30 requests/minute per IP |
+| Upload | 20 uploads/hour per IP |
+| Eval | 5 runs/hour per IP (one run makes 16+ model calls) |
 
-</details>
+- **Fail open.** If Redis is unreachable, the limiter logs and allows the request.
+- **Keep-alives.** `/api/health` is pinged by a scheduled GitHub Actions job to keep the Supabase free tier from pausing, and a second job pings Upstash Redis twice a week. GitHub disables scheduled workflows after 60 days without repository activity, so any commit re-arms them.
+- **CI.** Every push runs the 28 unit tests, ESLint, `tsc --noEmit` and a production build.
+- **Structured logging.** API routes log JSON including the model `finish_reason`, which is how the silent empty-answer bug was found.
+- **Dependencies.** `npm audit --omit=dev` reports 0 vulnerabilities (Oct 2026). The remaining findings are in dev-only lint tooling and do not ship.
 
----
+## Session isolation
 
-## Reliability & Production-Readiness
+On first visit the browser generates a `crypto.randomUUID()` and stores it in `localStorage`. Every upload, fetch, delete and search is scoped server-side by that id, so one visitor never sees another's documents.
 
-* **Rate limiting.** Upstash Redis sliding-window limits: 30 chat requests/minute and 20 uploads/hour per IP, tracked separately. If Redis is unreachable, the limiter fails open instead of taking the app down.
-* **Keep-alives.** `/api/health` pings Supabase on a schedule, and a twice-weekly GitHub Actions job pings Upstash Redis, so both free-tier databases stay below their inactivity-pause thresholds.
-* **Continuous integration.** Every push runs lint, type-check and build in GitHub Actions.
-* **Structured logging.** API routes log structured JSON (including model `finish_reason`), which is how the silent empty-answer bug was found.
+This is a deliberate lightweight-auth tradeoff, with two consequences worth stating:
 
----
+- **The session id is a bearer token.** Anyone holding it can read and delete that session's documents. It is a random UUID, but it is not real authentication.
+- **It travels in the URL** for `GET` and `DELETE /api/documents`, so it can appear in server logs.
 
-## Session & Multi-User Isolation
+Clearing browser data, or switching browser or device, starts a new empty session. Moving the id to a request header, and adding optional accounts, are on the roadmap.
 
-* On first visit, `useSessionId.ts` generates a `crypto.randomUUID()` and persists it in `localStorage`, giving each browser a stable anonymous identity.
-* Every upload, fetch and delete is scoped server-side by `session_id`. `/api/documents` and `hybrid_search_chunks` only return or modify data for the caller's session.
-* This is a deliberate lightweight-auth tradeoff: no signup friction, with real data isolation.
+## Database schema
 
----
+`supabase/schema.sql` is idempotent and recreates everything on a fresh project: the pgvector extension, tables, session columns, RLS, the generated `tsvector` column and GIN index, and the `hybrid_search_chunks` and `match_chunks` functions with a pinned `search_path`. There is deliberately no ANN index: every query is filtered to one session and the selected documents first, so an exact scan over that small set is fast and gives exact recall. pgvector is installed in the `public` schema, which is Supabase's default and the one remaining linter warning.
 
-## Database Schema
-
-The full schema (pgvector extension, session-scoped columns, full-text index, and the `hybrid_search_chunks` and legacy `match_chunks` functions) lives in `supabase/schema.sql`.
-
----
-
-<details>
-<summary><b>Project Structure</b></summary>
+## Project structure
 
 ```
 .github/workflows/
-├── ci.yml               # Lint, type-check, build on every push
-└── keepalive.yml        # Twice-weekly Upstash Redis ping
+  ci.yml                 tests, lint, type-check, build
+  keepalive-supabase.yml pings /api/health
+  keepalive-redis.yml    pings Upstash
 src/
-├── app/
-│   ├── api/
-│   │   ├── chat/        # Streaming AI responses via Groq
-│   │   ├── documents/   # Fetch and delete documents (session-scoped)
-│   │   ├── eval/        # Automated RAG quality evaluation
-│   │   ├── health/      # Uptime keep-alive ping
-│   │   └── upload/      # File upload, chunking, storage
-│   ├── eval/
-│   │   └── page.tsx     # Eval results dashboard
-│   ├── icon.png         # App icon / favicon
-│   └── page.tsx         # Main UI (markdown-rendered chat)
-├── hooks/
-│   └── useSessionId.ts  # Anonymous session identity
-└── lib/
-    ├── supabase.ts          # Public + admin Supabase clients
-    ├── embeddings.ts        # Cohere embeddings: embedText (documents) + embedQuery (search)
-    ├── chunker.ts           # Sentence-aware, word-boundary-safe chunking
-    ├── chunks-repository.ts # Hybrid search + fallback retrieval
-    ├── evalQuestions.ts     # Eval test question set
-    ├── validation.ts        # Zod request schemas
-    └── ratelimit.ts         # Upstash rate limiters (fail-open)
-supabase/
-└── schema.sql           # Full database schema
-assets/
-└── askmydocs-demo.gif   # README demo GIF
+  app/
+    page.tsx             main UI
+    eval/page.tsx        eval dashboard
+    api/{chat,upload,documents,eval,health}/route.ts
+  hooks/useSessionId.ts
+  lib/
+    chunker.ts           sentence-aware chunking (+ tests)
+    embeddings.ts        Cohere, asymmetric
+    chunks-repository.ts RPC calls, context labelling, sources
+    evalQuestions.ts     eval question set
+    validation.ts        Zod schemas (+ tests)
+    ratelimit.ts         Upstash limiters, fail-open helper
+    supabase-admin.ts    server-only service-role client
+    api-response.ts, config.ts, env.ts, logger.ts
+supabase/schema.sql
 ```
 
-</details>
+## Run locally
 
-<details>
-<summary><b>How to run locally</b></summary>
+Requires Node 20+, a Supabase project, and Groq, Cohere and Upstash accounts (all have free tiers).
 
-**1. Clone the repo**
 ```bash
 git clone https://github.com/ayush-s-tomar/intellect-docs-ai.git
 cd intellect-docs-ai
-```
-
-**2. Install dependencies**
-```bash
 npm install
 ```
 
-**3. Set up environment variables**
+1. Run `supabase/schema.sql` in the Supabase SQL editor.
+2. Create `.env.local`:
 
-Create a `.env.local` file in the root folder:
-```
-GROQ_API_KEY=your_groq_api_key
-COHERE_API_KEY=your_cohere_api_key
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-UPSTASH_REDIS_REST_URL=your_upstash_redis_url
-UPSTASH_REDIS_REST_TOKEN=your_upstash_redis_token
-```
-
-Get your keys from:
-* Groq → [console.groq.com](https://console.groq.com)
-* Cohere → [dashboard.cohere.com](https://dashboard.cohere.com)
-* Supabase → [supabase.com](https://supabase.com) → your project → Settings → API
-* Upstash → [console.upstash.com](https://console.upstash.com) → your Redis database → REST API
-
-**4. Set up the database**
-
-Run `supabase/schema.sql` in your Supabase SQL Editor.
-
-**5. Start the dev server**
 ```bash
-npm run dev
+GROQ_API_KEY=your_groq_key
+COHERE_API_KEY=your_cohere_key
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+UPSTASH_REDIS_REST_URL=your_upstash_rest_url
+UPSTASH_REDIS_REST_TOKEN=your_upstash_rest_token
 ```
 
-**6. Open** [http://localhost:3000](http://localhost:3000)
+3. Start the app and run the checks:
 
-**Optional: keep-alive.** To use the Redis keep-alive workflow on your own fork, add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` as repository secrets.
+```bash
+npm run dev      # http://localhost:3000
+npm test         # 28 unit tests
+npm run lint
+npx tsc --noEmit
+```
 
-</details>
+`SUPABASE_SERVICE_ROLE_KEY` is server-only and must never be exposed to the browser. `NEXT_PUBLIC_SUPABASE_URL` is just the project URL, not a secret.
 
-<details>
-<summary><b>Deployment</b></summary>
-<br/>
+## Deployment
 
-Deployed on [Vercel](https://vercel.com). To deploy your own:
-1. Push the repo to GitHub
-2. Vercel → New Project → import the repo
-3. Add all environment variables in the Vercel dashboard
-4. Deploy
+Deployed on Vercel. Set the six environment variables above in the project settings. For the Supabase keep-alive, add a repository secret `APP_HEALTH_URL` pointing at `/api/health`, and add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` as repository secrets for the Redis keep-alive.
 
-The eval route sets `maxDuration = 300` because it waits out Groq rate limits; make sure your Vercel plan or Fluid Compute setting allows it.
+## Known limitations
 
-</details>
-
----
+- Aggregate questions ("list every name in the document") need more than top-5 chunk retrieval can provide.
+- The eval is small, self-graded, and uses a simpler prompt than the chat route.
+- Session ids are bearer tokens, not authentication, and documents are never expired.
+- PDF text extraction happens in the browser, so scanned (image-only) PDFs are not supported.
+- Free-tier rate limits on Groq make the eval slow (1 to 3 minutes).
 
 ## Roadmap
 
-* [ ] Multi-turn conversation memory in the automated eval loop
-* [ ] An independent, non-self-graded quality check (a different model family as judge)
-* [ ] Multi-document Q&A across several uploads at once
-* [ ] Optional persistent accounts so documents survive across devices
-
----
+- [ ] Share one answering prompt between chat and eval so the eval tests what ships
+- [ ] A non-self-graded quality check (a different model family as judge) and a larger, multi-document question set
+- [ ] Move the session id from the query string to a request header
+- [ ] Expire documents for abandoned sessions
+- [ ] Multi-document Q&A with per-document attribution
+- [ ] Optional accounts so documents persist across devices
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+MIT. See [LICENSE](LICENSE).
 
 ## Author
 
-**Ayush Singh Tomar**: [GitHub](https://github.com/ayush-s-tomar) · [LinkedIn](https://www.linkedin.com/in/ayushsinghtomar) · [Portfolio](https://ayush-s-tomar.vercel.app)
-
-*See also: [SalesAgent](https://github.com/ayush-s-tomar/salesagent), an autonomous B2B lead-research and outreach agent, and [resume-screener-lora](https://github.com/ayush-s-tomar/resume-screener-lora), a LoRA fine-tuned resume screening model.*
+Ayush Singh Tomar: [GitHub](https://github.com/ayush-s-tomar) · [LinkedIn](https://linkedin.com/in/ayushsinghtomar) · [Portfolio](https://ayush-s-tomar.vercel.app)
