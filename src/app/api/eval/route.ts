@@ -160,11 +160,21 @@ ${context}`
 
 // Returns score = null when the judge call itself failed. Unscored questions
 // are excluded from the average instead of being counted as a 0.
+//
+// expectNotFound is true only for the deliberate grounding probe, whose correct
+// answer is "not found". For every other question a "not found" answer is NOT
+// rewarded by default: the judge must check whether the context really lacked
+// the answer, otherwise a lazy refusal would score full marks.
 async function scoreAnswer(
   question: string,
   answer: string,
-  fullContext: string
+  fullContext: string,
+  expectNotFound: boolean
 ): Promise<{ score: number | null; reason: string }> {
+  const notFoundRule = expectNotFound
+    ? `This question is deliberately unanswerable from any normal document. The correct answer is that the information is not found. Score 9-10 only if the answer says so and invents no details; score 0-2 if it invents an answer.`
+    : `If the answer says the information was not found, check the CONTEXT: if the context contains relevant information that the answer missed, score 0-3. Only score a "not found" answer high when the context truly lacks the answer.`
+
   let raw = ''
   try {
     // IMPORTANT: the judge sees the SAME, UNTRUNCATED context the answer model
@@ -188,7 +198,7 @@ async function scoreAnswer(
 - Accuracy based on the context (0-4 points)
 - Clarity and completeness (0-2 points)
 
-If the question asks about something the context does not contain, an answer that correctly says it is not found is accurate and should score high.
+${notFoundRule}
 
 Reply ONLY in this exact JSON format:
 {"score": 7, "reason": "one sentence explanation"}`
@@ -305,7 +315,12 @@ export async function POST(req: NextRequest) {
         })
       }
 
-      const { score, reason } = await scoreAnswer(evalQ.question, answer, context)
+      const { score, reason } = await scoreAnswer(
+        evalQ.question,
+        answer,
+        context,
+        evalQ.check === 'not_found'
+      )
 
       results.push({
         topic: evalQ.topic,
