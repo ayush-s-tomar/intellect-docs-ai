@@ -172,3 +172,15 @@ AS $$
   ORDER BY rrf_score DESC
   LIMIT match_count;
 $$;
+
+-- ============================================================
+-- 8. Security hardening: pin search_path on both functions
+-- ============================================================
+-- Supabase's linter flags functions with a mutable search_path. Pinning it
+-- stops a caller from shadowing objects via their own schema. This section
+-- must stay LAST: CREATE OR REPLACE FUNCTION above resets function settings.
+ALTER FUNCTION public.match_chunks(vector, int, text, bigint[])
+  SET search_path = public;
+
+ALTER FUNCTION public.hybrid_search_chunks(text, vector, int, text, bigint[], int)
+  SET search_path = public;
