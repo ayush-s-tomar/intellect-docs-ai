@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
 
 export type ApiSuccess<T> = {
@@ -51,14 +51,24 @@ export class ApiHandledError extends Error {
   }
 }
 
+function describeError(err: unknown): string {
+  if (err instanceof Error) return err.message
+  if (typeof err === 'object' && err !== null && 'message' in err) {
+    return String((err as { message: unknown }).message)
+  }
+  return 'Unknown error'
+}
+
 export function handleApiError(err: unknown, routeName: string) {
+  // Errors thrown deliberately with a safe, user-facing message.
   if (err instanceof ApiHandledError) {
     logger.warn(routeName, err.message, { code: err.code })
     return apiError(err.code, err.message)
   }
 
-  const message = err instanceof Error ? err.message : 'Unknown error'
+  // Anything else may carry internal detail (database, vendor or stack
+  // information). Log it in full, but never send it to the browser.
   const stack = err instanceof Error ? err.stack : undefined
-  logger.error(routeName, `Unhandled error: ${message}`, { stack })
-  return apiError('INTERNAL_ERROR', `Something went wrong: ${message}`)
+  logger.error(routeName, `Unhandled error: ${describeError(err)}`, { stack })
+  return apiError('INTERNAL_ERROR', 'Something went wrong. Please try again.')
 }
