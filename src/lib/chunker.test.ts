@@ -1,4 +1,4 @@
-﻿import { describe, it, expect } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { chunkText } from './chunker'
 
 describe('chunkText', () => {
@@ -33,10 +33,40 @@ describe('chunkText', () => {
   it('hard-splits a single sentence longer than chunkSize instead of producing one giant chunk', () => {
     const text = 'word '.repeat(500)
     const chunks = chunkText(text, 800, 150)
-    expect(chunks.length).toBeGreaterThanOrEqual(1)
+    expect(chunks.length).toBeGreaterThan(1)
     for (const chunk of chunks) {
       expect(chunk.length).toBeLessThan(2500)
     }
+  })
+
+  it('never produces a chunk larger than chunkSize plus the merge margin, even with no punctuation', () => {
+    // Regression test: PDF text often has no sentence punctuation, which used
+    // to produce one huge chunk that the embedder then silently truncated.
+    const text = Array.from({ length: 600 }, (_, i) => `token${String(i).padStart(4, '0')}`).join(' ')
+    const chunks = chunkText(text, 800, 150, 40)
+    expect(chunks.length).toBeGreaterThan(1)
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(800 + 40 + 1)
+    }
+  })
+
+  it('keeps every word of an unpunctuated document (nothing is truncated)', () => {
+    const words = Array.from({ length: 600 }, (_, i) => `token${String(i).padStart(4, '0')}`)
+    const chunks = chunkText(words.join(' '), 800, 150, 40)
+    const joined = chunks.join(' ')
+    for (const word of words) {
+      expect(joined).toContain(word)
+    }
+  })
+
+  it('hard-cuts a single long run with no whitespace without losing characters', () => {
+    const text = 'x'.repeat(3000)
+    const chunks = chunkText(text, 800, 150, 40)
+    expect(chunks.length).toBeGreaterThan(1)
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(800 + 40 + 1)
+    }
+    expect(chunks.join('').replace(/\s/g, '').length).toBeGreaterThanOrEqual(3000)
   })
 
   it('merges short trailing fragments into the previous chunk instead of standing alone', () => {
@@ -67,7 +97,7 @@ describe('chunkText', () => {
 
   it('never starts a chunk mid-word from the overlap buffer', () => {
     // Regression test for a bug where the overlap buffer was a raw
-    // text.slice(-overlap) with no regard for word boundaries — e.g.
+    // text.slice(-overlap) with no regard for word boundaries, e.g.
     // "growth-stage SaaS companies" would get cut to "th-stage SaaS
     // companies" and that fragment would lead the next chunk.
     const text = 'Northwind faces risks common to growth-stage SaaS companies operating today. '.repeat(30)
@@ -75,9 +105,6 @@ describe('chunkText', () => {
     for (const chunk of chunks) {
       const trimmed = chunk.trimStart()
       expect(trimmed.length).toBeGreaterThan(0)
-      // every chunk should start with a real word character, not a
-      // truncated fragment like "th-stage" or a leading space/punctuation
-      // that implies a word was cut in half.
       expect(/^[A-Za-z0-9]/.test(trimmed)).toBe(true)
     }
   })

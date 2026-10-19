@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase-admin'
 import { logger } from '@/lib/logger'
+import { RETRIEVAL } from '@/lib/config'
 
 export interface ChunkResult {
   content: string
@@ -25,6 +26,7 @@ export async function searchChunksHybrid(params: SearchParams): Promise<ChunkRes
     match_count: matchCount,
     filter_session_id: sessionId,
     filter_doc_ids: docIds,
+    rrf_k: RETRIEVAL.RRF_K,
   })
 
   if (error) {
@@ -82,9 +84,15 @@ async function fallbackFetchChunks(
   return (data || []) as ChunkResult[]
 }
 
+// Each excerpt is labelled [Chunk N] in the same order the UI lists its
+// sources ("Chunk 1" ... "Chunk N"), so when the model cites "(Chunk 2)" the
+// reader can open that exact card. Order must stay aligned with chunksToSources.
 export function chunksToContext(chunks: ChunkResult[]): string {
-  const joined = chunks.map(c => c.content).filter(Boolean).join('\n\n')
-  return joined.trim() || 'No context found.'
+  const labelled = chunks
+    .map((c, i) => `[Chunk ${i + 1}]\n${(c.content ?? '').trim()}`)
+    .join('\n\n')
+  if (!labelled.replace(/\[Chunk \d+\]/g, '').trim()) return 'No context found.'
+  return `Excerpts below are labelled [Chunk N]. When you use one, cite it as (Chunk N).\n\n${labelled}`
 }
 
 // The percentage shown next to each source is the chunk's real cosine

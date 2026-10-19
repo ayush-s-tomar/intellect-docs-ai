@@ -1,15 +1,16 @@
-﻿import { NextRequest } from 'next/server'
+import { NextRequest } from 'next/server'
 import Groq from 'groq-sdk'
-import { automatedEvalQuestions } from '@/lib/evalQuestions'
+import { automatedEvalQuestions, type DeterministicCheck } from '@/lib/evalQuestions'
 import { evalRequestSchema, formatZodError } from '@/lib/validation'
 import { env } from '@/lib/env'
 import { apiSuccess, apiError, handleApiError } from '@/lib/api-response'
 import { embedQuery } from '@/lib/embeddings'
 import { searchChunksHybrid, chunksToContext } from '@/lib/chunks-repository'
 import { RETRIEVAL } from '@/lib/config'
+import { logger } from '@/lib/logger'
 
-// The eval runs 7 questions x (QA call + judge call) and now waits out
-// Groq free-tier rate limits, so it can take a couple of minutes.
+// The eval runs every automated question as a QA call plus a judge call and
+// waits out Groq free-tier rate limits, so it can take a few minutes.
 export const maxDuration = 300
 
 const groq = new Groq({ apiKey: env.GROQ_API_KEY })
@@ -24,6 +25,30 @@ const JUDGE_TOKEN_BUDGETS = [600, 1200]
 
 const MAX_RATE_LIMIT_RETRIES = 6
 const MAX_WAIT_MS = 60_000
+
+const NOT_FOUND_PHRASES = [
+  'not found in document',
+  'not found in the document',
+  'does not mention',
+  "doesn't mention",
+  'not mentioned',
+  'no information',
+  'does not contain',
+  'not in the document',
+]
+
+type CheckResult = 'PASS' | 'FAIL' | 'N/A'
+
+interface EvalRow {
+  topic: string
+  question: string
+  answer: string
+  score: number | null
+  reason: string
+  avgSimilarity: number
+  chunksRetrieved: number
+  check: CheckResult
+}
 
 function sleep(ms: number) {
   return new Promise<void>(resolve => setTimeout(resolve, ms))
@@ -61,15 +86,29 @@ async function withRateLimitRetry<T>(label: string, fn: () => Promise<T>): Promi
       if (!isRateLimitError(err) || attempt > MAX_RATE_LIMIT_RETRIES) throw err
 
       const hinted = parseRetryDelayMs(err)
-      const waitMs = Math.min((hinted ?? 5000 * attempt) + 500, MAX_WAIT_MS)
 
       // A hint far beyond a minute means a daily limit, not a per-minute one.
       if (hinted !== null && hinted > MAX_WAIT_MS) throw err
 
-      console.warn(`${label}: rate limited, waiting ${waitMs}ms (attempt ${attempt})`)
+      const waitMs = Math.min((hinted ?? 5000 * attempt) + 500, MAX_WAIT_MS)
+      logger.warn('eval', `${label}: rate limited, waiting`, { waitMs, attempt })
       await sleep(waitMs)
     }
   }
+}
+
+// Deterministic checks: no LLM involved. Open-ended questions with neither
+// keywords nor a check report N/A instead of a fake PASS.
+function runCheck(answer: string, check: DeterministicCheck | undefined, keywords: string[]): CheckResult {
+  const lower = answer.toLowerCase()
+  const outcomes: boolean[] = []
+
+  if (keywords.length > 0) outcomes.push(keywords.some(kw => lower.includes(kw.toLowerCase())))
+  if (check === 'contains_number') outcomes.push(/\d/.test(answer))
+  if (check === 'not_found') outcomes.push(NOT_FOUND_PHRASES.some(p => lower.includes(p)))
+
+  if (outcomes.length === 0) return 'N/A'
+  return outcomes.every(Boolean) ? 'PASS' : 'FAIL'
 }
 
 async function generateAnswer(
@@ -108,7 +147,7 @@ ${context}`
 
     if (answer) return { answer, finishReason }
 
-    console.error('eval: empty answer from QA completion, retrying with bigger budget', {
+    logger.error('eval', 'Empty answer from QA completion, retrying with bigger budget', {
       question,
       finishReason,
       maxTokens: budget,
@@ -118,15 +157,18 @@ ${context}`
   return { answer: '', finishReason }
 }
 
+// Returns score = null when the judge call itself failed. Unscored questions
+// are excluded from the average instead of being counted as a 0.
 async function scoreAnswer(
   question: string,
   answer: string,
   fullContext: string
-): Promise<{ score: number; reason: string }> {
+): Promise<{ score: number | null; reason: string }> {
   let raw = ''
   try {
-    // IMPORTANT: judge must see the SAME context the answer model saw,
-    // otherwise it penalizes correct answers as "not in context".
+    // IMPORTANT: the judge sees the SAME, UNTRUNCATED context the answer model
+    // saw. Slicing it would hide chunks and penalize correct answers as
+    // "not in context".
     let finishReason: string | null | undefined
 
     for (const budget of JUDGE_TOKEN_BUDGETS) {
@@ -145,13 +187,15 @@ async function scoreAnswer(
 - Accuracy based on the context (0-4 points)
 - Clarity and completeness (0-2 points)
 
+If the question asks about something the context does not contain, an answer that correctly says it is not found is accurate and should score high.
+
 Reply ONLY in this exact JSON format:
 {"score": 7, "reason": "one sentence explanation"}`
             },
             {
               role: 'user',
               content: `QUESTION: ${question}
-CONTEXT: ${fullContext.slice(0, 4000)}
+CONTEXT: ${fullContext}
 ANSWER: ${answer}
 
 Score this answer:`
@@ -164,7 +208,7 @@ Score this answer:`
       finishReason = completion.choices[0]?.finish_reason
       if (raw) break
 
-      console.error('eval: empty judge response, retrying with bigger budget', {
+      logger.error('eval', 'Empty judge response, retrying with bigger budget', {
         finishReason,
         maxTokens: budget,
       })
@@ -181,16 +225,21 @@ Score this answer:`
     }
 
     const parsed = JSON.parse(jsonMatch[0])
+    const numeric = Number(parsed.score)
+    if (!Number.isFinite(numeric)) {
+      throw new Error('Judge returned a non-numeric score')
+    }
+
     return {
-      score: Math.min(10, Math.max(0, parsed.score)),
-      reason: parsed.reason || ''
+      score: Math.min(10, Math.max(0, numeric)),
+      reason: typeof parsed.reason === 'string' ? parsed.reason : '',
     }
   } catch (err) {
-    console.error('scoreAnswer: failed to parse judge response', {
-      error: err instanceof Error ? err.message : err,
+    logger.error('eval', 'Judge call failed; question left unscored', {
+      error: err instanceof Error ? err.message : String(err),
       raw,
     })
-    return { score: 0, reason: 'Failed to score' }
+    return { score: null, reason: 'Judge call failed; this question is unscored.' }
   }
 }
 
@@ -209,8 +258,7 @@ export async function POST(req: NextRequest) {
       return apiError('VALIDATION_ERROR', 'document_id must be a valid number')
     }
 
-    const results = []
-    let totalScore = 0
+    const results: EvalRow[] = []
     let totalChunksRetrieved = 0
 
     for (const evalQ of automatedEvalQuestions) {
@@ -240,7 +288,7 @@ export async function POST(req: NextRequest) {
       )
 
       if (!answer) {
-        console.error('eval: still empty answer after retry', {
+        logger.error('eval', 'Still empty answer after retry', {
           question: evalQ.question,
           finishReason: answerFinishReason,
           chunksRetrieved: finalChunks.length,
@@ -248,12 +296,6 @@ export async function POST(req: NextRequest) {
       }
 
       const { score, reason } = await scoreAnswer(evalQ.question, answer, context)
-      totalScore += score
-
-      const answerLower = answer.toLowerCase()
-      const keywordsPassed = evalQ.expectedKeywords.length === 0
-        ? true
-        : evalQ.expectedKeywords.some(kw => answerLower.includes(kw.toLowerCase()))
 
       results.push({
         topic: evalQ.topic,
@@ -263,21 +305,34 @@ export async function POST(req: NextRequest) {
         reason,
         avgSimilarity,
         chunksRetrieved: finalChunks.length,
-        keywordCheck: keywordsPassed ? 'PASS' : 'FAIL',
+        check: runCheck(answer, evalQ.check, evalQ.expectedKeywords),
       })
     }
 
-    const avgScore = Math.round((totalScore / automatedEvalQuestions.length) * 10) / 10
+    const scored = results.filter((r): r is EvalRow & { score: number } => r.score !== null)
+    if (scored.length === 0) {
+      return apiError(
+        'UPSTREAM_ERROR',
+        'Every judge call failed (usually Groq rate limits). Wait a minute and run the eval again.'
+      )
+    }
+
+    const avgScore = Math.round((scored.reduce((sum, r) => sum + r.score, 0) / scored.length) * 10) / 10
     const avgChunks = Math.round(totalChunksRetrieved / automatedEvalQuestions.length * 10) / 10
-    const passCount = results.filter(r => r.score >= 6).length
+    const passCount = scored.filter(r => r.score >= 6).length
+    const checked = results.filter(r => r.check !== 'N/A')
 
     return apiSuccess({
       summary: {
         totalQuestions: automatedEvalQuestions.length,
+        scored: scored.length,
+        unscored: results.length - scored.length,
         averageScore: avgScore,
         passed: passCount,
-        failed: automatedEvalQuestions.length - passCount,
-        passRate: Math.round(passCount / automatedEvalQuestions.length * 100),
+        failed: scored.length - passCount,
+        passRate: Math.round(passCount / scored.length * 100),
+        checksTotal: checked.length,
+        checksPassed: checked.filter(r => r.check === 'PASS').length,
         avgChunksRetrieved: avgChunks,
         grade: avgScore >= 8 ? 'A' : avgScore >= 6 ? 'B' : avgScore >= 4 ? 'C' : 'D',
       },

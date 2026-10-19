@@ -1,26 +1,32 @@
-﻿'use client'
+'use client'
 
 import { useState, useEffect } from 'react'
 import { useSessionId } from '@/hooks/useSessionId'
 import Link from 'next/link'
 
+type CheckResult = 'PASS' | 'FAIL' | 'N/A'
+
 interface EvalResult {
   topic: string
   question: string
   answer: string
-  score: number
+  score: number | null
   reason: string
   avgSimilarity: number
   chunksRetrieved: number
-  keywordCheck: string
+  check: CheckResult
 }
 
 interface EvalSummary {
   totalQuestions: number
+  scored: number
+  unscored: number
   averageScore: number
   passed: number
   failed: number
   passRate: number
+  checksTotal: number
+  checksPassed: number
   avgChunksRetrieved: number
   grade: string
 }
@@ -100,11 +106,18 @@ export default function EvalPage() {
     return 'text-red-400'
   }
 
-  const scoreColor = (score: number) => {
+  const scoreColor = (score: number | null) => {
+    if (score === null) return 'text-slate-500'
     if (score >= 8) return 'text-emerald-400'
     if (score >= 6) return 'text-blue-400'
     if (score >= 4) return 'text-amber-400'
     return 'text-red-400'
+  }
+
+  const checkColor = (check: CheckResult) => {
+    if (check === 'PASS') return 'text-emerald-500'
+    if (check === 'FAIL') return 'text-red-400'
+    return 'text-slate-600'
   }
 
   return (
@@ -122,7 +135,7 @@ export default function EvalPage() {
               </div>
               <h1 className="text-2xl font-bold text-white">RAG Eval Suite</h1>
               <p className="text-sm text-slate-500 mt-1">
-                Automatically test your pipeline quality with scored questions
+                Regression check for retrieval and answer quality
               </p>
             </div>
             <Link
@@ -138,9 +151,9 @@ export default function EvalPage() {
           <p className="text-slate-400 font-semibold mb-1">How to use:</p>
           <p>1. Upload a document on the <Link href="/" className="text-emerald-400 hover:underline">main page</Link></p>
           <p>2. Come back here and select it from the dropdown below</p>
-          <p>3. Click Run Eval and wait ~30-60 seconds for results</p>
+          <p>3. Click Run Eval and wait 1-3 minutes (free-tier rate limits add pauses)</p>
           <p className="mt-2 text-slate-600">
-            Scores are 0-10. Grade A = 8+, B = 6-8, C = 4-6, D = below 4.
+            Scores are 0-10 from an LLM judge in the same model family as the answerer, so treat them as a regression signal, not an independent benchmark. Deterministic checks need no LLM. Grade A = 8+, B = 6-8, C = 4-6, D = below 4.
           </p>
         </div>
 
@@ -184,7 +197,7 @@ export default function EvalPage() {
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '300ms' }} />
             </div>
             <p className="text-xs text-slate-500">
-              Running eval questions... this takes ~30-60 seconds
+              Running eval questions... this takes 1-3 minutes
             </p>
           </div>
         )}
@@ -222,11 +235,18 @@ export default function EvalPage() {
               <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4 text-center">
                 <p className="text-3xl font-bold text-blue-400">
                   {report.summary.passed}
-                  <span className="text-lg text-slate-500">/{report.summary.totalQuestions}</span>
+                  <span className="text-lg text-slate-500">/{report.summary.scored}</span>
                 </p>
-                <p className="text-[10px] text-slate-600 uppercase tracking-wider mt-1">Passed</p>
+                <p className="text-[10px] text-slate-600 uppercase tracking-wider mt-1">Passed (6+)</p>
               </div>
             </div>
+
+            <p className="text-[11px] text-slate-500 text-center">
+              Deterministic checks: {report.summary.checksPassed}/{report.summary.checksTotal} passed
+              {report.summary.unscored > 0 && (
+                <span className="text-amber-500"> · {report.summary.unscored} question(s) unscored (judge call failed, excluded from average)</span>
+              )}
+            </p>
 
             <div className="space-y-3">
               <p className="text-[10px] text-slate-600 uppercase tracking-widest">
@@ -243,12 +263,10 @@ export default function EvalPage() {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <p className={`text-2xl font-bold ${scoreColor(r.score)}`}>
-                        {r.score}<span className="text-sm text-slate-500">/10</span>
+                        {r.score === null ? '—' : r.score}<span className="text-sm text-slate-500">/10</span>
                       </p>
-                      <p className={`text-[10px] uppercase tracking-wider ${
-                        r.keywordCheck === 'PASS' ? 'text-emerald-500' : 'text-amber-500'
-                      }`}>
-                        keywords: {r.keywordCheck.toLowerCase()}
+                      <p className={`text-[10px] uppercase tracking-wider ${checkColor(r.check)}`}>
+                        check: {r.check.toLowerCase()}
                       </p>
                     </div>
                   </div>

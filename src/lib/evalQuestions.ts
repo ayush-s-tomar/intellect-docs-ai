@@ -1,86 +1,85 @@
-// These are your test questions for evaluating RAG quality.
-// Edit these to match whatever test document you use for evals.
+// Questions used to evaluate RAG quality. Run against one uploaded document
+// (the author's test document is a job description).
 //
-// Expanded (Day 3) with keyword-heavy / exact-match cases specifically
-// to exercise the full-text half of hybrid search — the original set
-// was entirely open-ended, which only ever tested vector retrieval and
-// wouldn't reveal whether hybrid search is actually pulling its weight.
-// Re-run /eval before and after switching chat/route.ts to compare.
-//
-// NOTE (fix): Q1-Q4 used to carry "expectedKeywords" like ["key","main",
-// "important"] — generic vocabulary about the question itself, not actual
-// content facts. That meant a fully correct, 10/10-judged answer could
-// still fail the keyword check just for not using those specific words
-// (e.g. stating a conclusion directly instead of writing "therefore...").
-// expectedKeywords is only meaningful for exact-lookup questions (proper
-// nouns, numbers, specific terms) — see Q6/Q7 — so open-ended questions
-// now correctly use [] and are scored by the judge alone, same as Q5-Q7.
+// Scoring has two independent layers:
+//   1. An LLM judge scores every answer 0-10 (self-graded: same model family
+//      answers and judges, so treat it as a regression signal, not a benchmark).
+//   2. Deterministic checks that need no LLM and no document-specific answers:
+//        contains_number - the answer must contain at least one digit
+//        not_found       - the answer must admit the document doesn't cover it
+//      Questions with no check report "n/a" rather than a fake PASS.
+
+export type DeterministicCheck = 'contains_number' | 'not_found'
 
 export interface EvalQuestion {
   question: string
-  expectedKeywords: string[]  // answer must contain these words to pass
-  topic: string               // just a label for the report
+  expectedKeywords: string[]  // optional: answer must contain at least one of these
+  check?: DeterministicCheck  // optional deterministic check (see above)
+  topic: string               // label for the report
   automated?: boolean         // false = manual-only, excluded from /api/eval loop
 }
 
 export const evalQuestions: EvalQuestion[] = [
   {
     question: "What is the main topic of this document?",
-    expectedKeywords: [],  // open ended — scored by Groq only
+    expectedKeywords: [],
     topic: "Document overview"
   },
   {
     question: "Summarize the key points in 2-3 sentences.",
-    expectedKeywords: [],  // open ended — scored by Groq only
+    expectedKeywords: [],
     topic: "Summarization"
   },
   {
     question: "What are the most important details mentioned?",
-    expectedKeywords: [],  // open ended — scored by Groq only
+    expectedKeywords: [],
     topic: "Detail extraction"
   },
   {
     question: "What conclusions can be drawn from this document?",
-    expectedKeywords: [],  // open ended — scored by Groq only
+    expectedKeywords: [],
     topic: "Reasoning"
   },
   {
     question: "Are there any numbers, dates, or statistics mentioned?",
-    expectedKeywords: [],  // open ended — scored by Groq only
+    expectedKeywords: [],
+    check: "contains_number",
     topic: "Data extraction"
   },
   {
-    // Exact-term lookup — the case pure vector search tends to miss
-    // when a proper noun or specific term isn't semantically "close"
-    // to anything else in the chunk. Full-text search should catch
-    // this directly via websearch_to_tsquery.
+    // Exact-term lookup: the case pure vector search tends to miss when a
+    // proper noun or specific term is not semantically "close" to its chunk.
     question: "Does the document mention any specific names, products, or proper nouns? List them.",
     expectedKeywords: [],
     topic: "Exact keyword match"
   },
   {
-    // Numeric/exact-value lookup — cosine similarity on embeddings
-    // often ranks numbers poorly since "42" and "43" embed almost
-    // identically despite being factually distinct.
+    // Numeric lookup: embeddings rank numbers poorly ("42" and "43" embed
+    // almost identically), so this exercises the full-text half of hybrid search.
     question: "What specific numbers, percentages, or quantities appear in the document?",
     expectedKeywords: [],
+    check: "contains_number",
     topic: "Numeric exact match"
   },
   {
-    // Multi-turn follow-up — depends on MAX_HISTORY_MESSAGES context
-    // being carried into the prompt (see chat/route.ts). Excluded from
-    // the automated /api/eval loop since it sends one-shot questions
-    // with no prior turn to refer back to. Kept here as a manual test
-    // case to run in the chat UI directly after a prior question.
+    // Grounding probe: the answer is deliberately absent from any realistic
+    // document. A grounded system must say so instead of inventing an answer.
+    question: "What does the document say about quantum computing hardware used for lunar mining?",
+    expectedKeywords: [],
+    check: "not_found",
+    topic: "Grounding (should not be found)"
+  },
+  {
+    // Multi-turn follow-up: needs a prior turn, so it is excluded from the
+    // one-shot /api/eval loop. Run it manually in the chat UI after a question.
     question: "Can you go into more detail on that last point?",
     expectedKeywords: [],
-    topic: "Conversation memory (manual test — ask a question first)",
+    topic: "Conversation memory (manual test: ask a question first)",
     automated: false
   }
 ]
 
-// Questions actually run by /api/eval — excludes manual-only cases
-// (automated: false) that require context the one-shot harness can't provide.
+// Questions actually run by /api/eval: excludes manual-only cases.
 export const automatedEvalQuestions: EvalQuestion[] = evalQuestions.filter(
   q => q.automated !== false
 )

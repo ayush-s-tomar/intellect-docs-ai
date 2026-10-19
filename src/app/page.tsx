@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import { useSessionId } from '@/hooks/useSessionId'
-import { UPLOAD } from '@/lib/config'
+import { UPLOAD, RATE_LIMIT } from '@/lib/config'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -179,7 +179,7 @@ export default function Home() {
         showToast(`✓ "${file.name}" uploaded — ${data.data.chunksCreated} chunks indexed`, 'success')
       } else {
         if (data.code === 'RATE_LIMITED') {
-          showToast('Upload limit reached. Max 5 uploads per hour.', 'warning', 5000)
+          showToast(`Upload limit reached. Max ${RATE_LIMIT.UPLOAD.MAX_REQUESTS} uploads per hour.`, 'warning', 5000)
         } else {
           showToast('Upload failed: ' + data.error, 'error', 5000)
         }
@@ -196,19 +196,33 @@ export default function Home() {
 
   const handleClearAll = async () => {
     if (documents.length === 0) return
-    const count = documents.length
-    await Promise.all(
-      documents.map(doc =>
-        fetch(`/api/documents?session_id=${sessionId}`, {
+
+    const results = await Promise.allSettled(
+      documents.map(async doc => {
+        const res = await fetch(`/api/documents?session_id=${sessionId}`, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: doc.id }),
         })
-      )
+        const data: ApiResponse<{ deleted: boolean }> = await res.json()
+        if (!data.success) throw new Error(data.error)
+        return doc.id
+      })
     )
-    setDocuments([])
-    setSelectedDocIds([])
-    showToast(`${count} document${count > 1 ? 's' : ''} deleted`, 'success')
+
+    const deletedIds = results
+      .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+      .map(r => r.value)
+    const failedCount = results.length - deletedIds.length
+
+    setDocuments(prev => prev.filter(d => !deletedIds.includes(d.id)))
+    setSelectedDocIds(prev => prev.filter(id => !deletedIds.includes(id)))
+
+    if (failedCount > 0) {
+      showToast(`${failedCount} document${failedCount > 1 ? 's' : ''} could not be deleted. Please try again.`, 'error', 5000)
+    } else {
+      showToast(`${deletedIds.length} document${deletedIds.length > 1 ? 's' : ''} deleted`, 'success')
+    }
   }
 
   const handleDeleteDocument = async (id: string) => {
@@ -318,14 +332,28 @@ export default function Home() {
       const assistantMsg: Message = { role: 'assistant', content: '', sources: [] }
       setMessages(prev => [...prev, assistantMsg])
 
-      while (reader) {
+      // A network read can end in the middle of an SSE event (the sources
+      // event alone is several KB), so buffer and only parse complete events,
+      // which end with a blank line.
+      let buffer = ''
+      let streamDone = false
+
+      while (!streamDone) {
         const { done, value } = await reader.read()
         if (done) break
-        const chunk = decoder.decode(value)
-        const lines = chunk.split('\n').filter(l => l.startsWith('data: '))
-        for (const line of lines) {
-          const raw = line.replace('data: ', '')
-          if (raw === '[DONE]') break
+        buffer += decoder.decode(value, { stream: true })
+
+        const events = buffer.split('\n\n')
+        buffer = events.pop() ?? ''
+
+        for (const event of events) {
+          const line = event.trim()
+          if (!line.startsWith('data: ')) continue
+          const raw = line.slice(6)
+          if (raw === '[DONE]') {
+            streamDone = true
+            break
+          }
           try {
             const parsed = JSON.parse(raw)
             setMessages(prev => {
@@ -338,7 +366,7 @@ export default function Home() {
               return [...prev.slice(0, -1), updated]
             })
           } catch {
-            // ignore malformed SSE chunk
+            // ignore malformed SSE event
           }
         }
       }
