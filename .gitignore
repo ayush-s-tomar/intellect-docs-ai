@@ -16,3 +16,6 @@ __pycache__/
 
 # Mac
 .DS_Storenext-env.d.ts
+
+# TypeScript incremental build cache
+*.tsbuildinfo
