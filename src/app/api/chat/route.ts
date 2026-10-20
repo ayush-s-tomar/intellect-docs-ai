@@ -8,6 +8,7 @@ import { apiError, handleApiError, ApiHandledError } from '@/lib/api-response'
 import { searchChunksHybrid, chunksToContext, chunksToSources } from '@/lib/chunks-repository'
 import { CHAT, RETRIEVAL } from '@/lib/config'
 import { logger } from '@/lib/logger'
+import { buildSystemPrompt } from '@/lib/prompts'
 
 const groq = new Groq({ apiKey: env.GROQ_API_KEY })
 
@@ -63,10 +64,7 @@ export async function POST(req: NextRequest) {
     const fullMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
       {
         role: 'system',
-        content: `You are a helpful assistant. Answer the user's question using ONLY the following context from their uploaded document(s). Always mention where in the document you found the answer. Format answers as short paragraphs or simple bullet lists. Never use markdown tables. Use the prior conversation only to resolve references (e.g. "it", "the second one") — the CONTEXT below is the sole source of truth for facts.
-
-CONTEXT:
-${context}`
+        content: buildSystemPrompt(context)
       },
       ...priorHistory.map(m => ({ role: m.role, content: m.content })),
       {

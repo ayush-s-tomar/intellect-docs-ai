@@ -9,6 +9,7 @@ import { searchChunksHybrid, chunksToContext } from '@/lib/chunks-repository'
 import { evalRatelimit, safeLimit, getClientIp } from '@/lib/ratelimit'
 import { RETRIEVAL, RATE_LIMIT } from '@/lib/config'
 import { logger } from '@/lib/logger'
+import { buildSystemPrompt } from '@/lib/prompts'
 
 // The eval runs every automated question as a QA call plus a judge call and
 // waits out Groq free-tier rate limits, so it can take a few minutes.
@@ -128,12 +129,7 @@ async function generateAnswer(
         messages: [
           {
             role: 'system',
-            content: `Answer the question using ONLY the following context.
-If the answer is not in the context, say "Not found in document."
-Be concise. Format the answer as short paragraphs or simple bullet lists. Never use markdown tables.
-
-CONTEXT:
-${context}`
+            content: buildSystemPrompt(context)
           },
           {
             role: 'user',
