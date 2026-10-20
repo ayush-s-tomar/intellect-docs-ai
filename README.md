@@ -1,8 +1,15 @@
-# AskMyDocs: AI Document Q&A with Cited Answers
+<div align="center">
+
+# AskMyDocs
+
+**Ask questions about your documents. Get answers you can verify.**
+
+Every answer is generated only from your document, cites the chunks it used, and shows each chunk's real cosine similarity.
 
 [![CI](https://github.com/ayush-s-tomar/intellect-docs-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/ayush-s-tomar/intellect-docs-ai/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/ayush-s-tomar/intellect-docs-ai)](LICENSE)
 [![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://intellect-docs-ai.vercel.app)
+
 ![Next.js](https://img.shields.io/badge/Next.js-16-black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6)
 ![Supabase](https://img.shields.io/badge/Supabase-pgvector-3ecf8e)
@@ -10,19 +17,36 @@
 ![Cohere](https://img.shields.io/badge/Embeddings-Cohere-39594d)
 ![Upstash](https://img.shields.io/badge/Rate%20limit-Upstash%20Redis-00e9a3)
 
-Upload a document and ask questions about it in plain English.
-Answers are generated only from your document and shown next to the exact chunks they came from, with each chunk's cosine similarity.
-
-**[Live demo](https://intellect-docs-ai.vercel.app)** · [How it works](#how-it-works) · [Engineering decisions](#engineering-decisions) · [Eval](#rag-quality-evaluation) · [Run locally](#run-locally) · [Limitations](#known-limitations)
+**[Live demo](https://intellect-docs-ai.vercel.app)** · **[How it works](#how-it-works)** · **[Eval results](#rag-quality-evaluation)** · **[Run locally](#run-locally)** · **[Limitations](#known-limitations)**
 
 ![AskMyDocs demo: upload, ask, get a cited answer, run the eval](assets/askmydocs-demo.gif)
 
-## Highlights
+</div>
 
-- **Grounded, cited answers.** The model sees labelled excerpts (`[Chunk 1]` to `[Chunk 5]`), cites them as `(Chunk N)`, and the UI lists the same chunks with their similarity, so every claim can be traced to text.
-- **Hybrid retrieval.** pgvector cosine similarity and Postgres full-text search are fused with Reciprocal Rank Fusion, so both semantic matches and exact terms, names and numbers are found.
-- **A built-in eval harness** with an LLM judge plus deterministic checks, honest about what it can and cannot prove (see [Eval](#rag-quality-evaluation)).
-- **Production hygiene.** CI runs tests, lint, type-check and build on every push. Rate limiting fails open. Server-side input validation. Row Level Security on. Production dependencies audit clean.
+## Try it in 60 seconds
+
+1. Open the **[live demo](https://intellect-docs-ai.vercel.app)**. No signup.
+2. Click **Upload Document** and choose any `.txt`, `.md` or `.pdf` (up to 5 MB).
+3. Select it in the sidebar and click an example question, or ask your own.
+4. Open the **Sources** under the answer to see the exact chunks and their cosine similarity.
+5. Optional: open `/eval` to run the built-in quality check.
+
+> The demo runs on free tiers. If the AI provider's daily token limit has been reached, the app says so and recovers the next day.
+
+## At a glance
+
+| | |
+| --- | --- |
+| **What it is** | A retrieval-augmented (RAG) document Q&A app with cited, traceable answers |
+| **Retrieval** | Hybrid: pgvector cosine + Postgres full-text, fused with Reciprocal Rank Fusion |
+| **Answering** | Groq `openai/gpt-oss-20b`, streamed, citing `(Chunk N)` |
+| **Quality** | Built-in eval: LLM judge plus deterministic checks, reported honestly |
+| **Engineering** | 35 unit tests, CI on every push, input validation, RLS, rate limiting, clean production audit |
+| **Isolation** | Anonymous, session-scoped, no signup |
+
+## Contents
+
+[Features](#features) · [Tech stack](#tech-stack) · [How it works](#how-it-works) · [Engineering decisions](#engineering-decisions) · [Eval](#rag-quality-evaluation) · [Reliability](#reliability) · [Session isolation](#session-isolation) · [Schema](#database-schema) · [Structure](#project-structure) · [Run locally](#run-locally) · [Deployment](#deployment) · [Limitations](#known-limitations) · [Roadmap](#roadmap)
 
 ## Why this exists
 
@@ -30,11 +54,11 @@ Most "chat with your PDF" demos either hallucinate past the source or hide why a
 
 ## Features
 
-- Upload `.txt`, `.md` or `.pdf` (PDF text is extracted in the browser) up to 5 MB, and pick documents from the sidebar
+- Upload `.txt`, `.md` or `.pdf` (PDF text is extracted in the browser), up to 5 MB, and pick documents from the sidebar
 - Streaming answers rendered as markdown, with `(Chunk N)` citations
-- Inspect the source chunks behind every answer, with similarity percentages
-- Multi-turn follow-ups (the last 6 messages are used to resolve references such as "it")
-- Export a chat, delete documents, and run the eval from `/eval`
+- Source cards for every answer, with real cosine similarity
+- Multi-turn follow-ups (the last 6 messages resolve references such as "it")
+- Example-question chips, chat export, document delete, and an eval dashboard at `/eval`
 - Anonymous, session-scoped isolation with no signup
 
 ## Tech stack
@@ -68,30 +92,45 @@ flowchart LR
 1. **Upload.** `chunker.ts` splits text into sentence-aware chunks (about 800 characters, 150-character overlap). Oversized "sentences" (common in PDF text without punctuation) are split at whitespace or hard-cut, never truncated, and the overlap snaps to a word boundary so a chunk never opens mid-word.
 2. **Embed and store.** Each chunk is embedded with `input_type: search_document` and stored with its 384-dimension vector. A generated `tsvector` column keeps full-text search in sync automatically.
 3. **Retrieve.** The question is embedded with `input_type: search_query` (Cohere's model is asymmetric). The `hybrid_search_chunks` RPC takes up to 20 candidates from each leg, ranks them separately, fuses the ranks with RRF, and returns the top 5. Every query is scoped to the caller's session and the selected documents.
-4. **Answer.** The 5 chunks go to Groq as labelled excerpts. The answer streams back, preceded by a sources event.
+4. **Answer.** The 5 chunks go to Groq as labelled excerpts. The answer streams back, preceded by a sources event. The same prompt module serves chat and eval, so the eval tests what users get.
 5. **Show the work.** The UI renders the markdown answer and the chunk cards with real cosine similarity.
 
 ## Engineering decisions
 
-**Retrieval quality**
+<details>
+<summary><b>Retrieval quality</b></summary>
+
 - **Query/document asymmetry.** Questions were once embedded as `search_document`, which quietly degraded retrieval everywhere. They now use `search_query`.
 - **Truncation mismatch.** Chunks were stored at about 800 characters but only the first 512 were embedded. The embed limit now exceeds chunk size, and the chunker hard-splits oversized text so nothing is truncated.
 - **Mid-word boundaries.** The overlap now snaps to whitespace (including newlines), with a regression test.
 - **Hybrid search.** Full-text search catches names and numbers that embed poorly. The full-text leg ORs the query terms: `websearch_to_tsquery` ANDs them, which returns nothing for a natural-language question and silently turns hybrid into vector-only.
 - **Honest similarity.** The percentage on each source card is real cosine similarity. It used to show each chunk's share of the RRF score, which is rank-based and nearly identical across the top results.
 
-**LLM behaviour and eval**
+</details>
+
+<details>
+<summary><b>LLM behaviour and eval</b></summary>
+
 - **Reasoning-model token exhaustion.** `gpt-oss-20b` spends part of `max_tokens` on hidden reasoning, so small budgets returned empty answers with no error. This was only visible by logging `finish_reason`. The eval retries once with a larger budget, and the chat route logs abnormal completions and tells the user when a response is empty or cut off.
+- **One shared prompt.** Chat and eval build their system prompt from the same module, so the eval measures the prompt users actually get.
+- **Refusal wording, measured.** The original prompt made the model answer "Not found" whenever it was unsure. Softening it ("refuse only if nothing relevant exists, otherwise answer partially") moved the numbers question from a repeatable 6 to 9 without breaking the grounding probe.
 - **Judge sees the same context.** The judge used to see a truncated slice of the context, so it penalised correct answers. It now sees exactly what the answerer saw.
 - **No reward for lazy refusals.** A "not found" answer scores high only on the deliberate grounding probe. On every other question the judge must check whether the context really lacked the answer.
-- **Free-tier rate limits.** The eval waits out Groq's 429 hints, and a failed judge call is reported as unscored instead of being counted as 0.
+- **Free-tier limits handled.** The eval waits out per-minute 429 hints, stops immediately on the daily token cap with a clear message, and reports a failed judge call as unscored instead of counting it as 0.
 
-**Reliability and security**
+</details>
+
+<details>
+<summary><b>Reliability and security</b></summary>
+
 - **Zero-downtime model migration** when Groq deprecated `llama-3.1-8b-instant`.
 - **Fail-open rate limiter.** A Redis outage (an expired free-tier database) once broke uploads and chat. The limiter now logs and allows the request.
-- **Server-side validation.** Upload size and type, empty files, NUL characters, UUID session ids, bounded message length and document-id counts. Raw internal error text never reaches the browser.
-- **Row Level Security enabled** on both tables with no policies, and all access goes through server routes using the service-role key (`server-only`). The browser holds no Supabase key.
+- **Server-side validation.** Upload size and type, empty files, NUL characters, UUID session ids, bounded message length and document-id counts.
+- **No internal errors in the browser.** Provider and database error text is logged on the server only. Users see short, fixed messages.
+- **Row Level Security enabled** on both tables with no policies. All access goes through server routes using the service-role key (`server-only`), so the browser holds no Supabase key.
 - **SSE parsing buffers** until a full event arrives, so a network read that splits an event does not drop text.
+
+</details>
 
 ## RAG quality evaluation
 
@@ -102,20 +141,34 @@ flowchart LR
 
 Open-ended questions report `n/a` rather than a fake pass.
 
-**Latest recorded run (Oct 2026):** Grade **B**, **7.1/10** average, **6 of 8** questions at 6/10 or higher (75%), deterministic checks 3/3, 0 unscored. Document: a 6-week CAT exam study guide (a text file).
+**Measured runs (Oct 2026, one 6-week CAT study guide, re-uploaded between runs):**
+
+| Run | Change | Average |
+| --- | --- | --- |
+| 1 | Original prompts | 7.1 |
+| 2 | Same code, re-run | 8.1 |
+| 3 | One shared chat/eval prompt | 8.0 |
+| 4 | Softer refusal wording | 8.4 |
+| 5 | Exact-term question reworded | 8.9 (7 of 8 scored; 1 judge call failed and was excluded) |
+
+Runs vary by about a point with no code change (runs 1 and 2), so treat the overall number as "roughly 8, between 7 and 9". The specific changes that held up are the ones that fixed a question that failed every time.
+
+**Per-question scores from run 4 (all 8 scored):**
 
 | Question | Score |
 | --- | --- |
 | Main topic | 10 |
-| Summarize key points | 10 |
-| Most important details | 1 |
-| Conclusions | 10 |
+| Summarize key points | 9 |
+| Most important details | 10 |
+| Conclusions | 9 |
 | Numbers, dates, statistics | 10 |
-| Proper nouns (list them) | 0 |
-| Specific numbers / quantities | 6 |
+| Exact term lookup (see note) | 0 |
+| Specific numbers / quantities | 9 |
 | Grounding probe (should be "not found") | 10 |
 
-**How to read that number.** It is a self-graded regression signal, not a benchmark. The same Groq model family answers and judges, the run covers one document and eight questions, and the eval's QA prompt is simpler than the production chat prompt. The two failures were not retrieval failures: the judge noted the context contained the relevant text, and the model answered "Not found" anyway. Aggregate questions ("list all names", "most important details") are also a structural weakness of top-5 chunk retrieval, which cannot cover a whole document. The numbers question scored 6 because the answer mostly listed section numbers rather than real quantities, which the digit check cannot distinguish. The live `/eval` dashboard is the source of truth.
+**Note on the exact-term question.** It originally asked for "names, products, or proper nouns". On a study guide the model answered "Not found" every time, although the judge saw acronyms like CAT, VARC and DILR in the context. That is a question-design problem, not retrieval, so it was reworded to "specific terms, acronyms, section names or exam names", and it then scored 8. The earlier 0s are reported here, not hidden.
+
+**How to read these numbers.** They are a self-graded regression signal, not a benchmark: the same Groq model family answers and judges, the set is 8 questions on one document, and the digit check cannot tell real quantities from section numbers. Aggregate questions ("list every name") are also a structural limit of top-5 chunk retrieval. The live `/eval` dashboard is the source of truth.
 
 ## Reliability
 
@@ -126,8 +179,9 @@ Open-ended questions report `n/a` rather than a fake pass.
 | Eval | 5 runs/hour per IP (one run makes 16+ model calls) |
 
 - **Fail open.** If Redis is unreachable, the limiter logs and allows the request.
+- **Daily provider cap.** When Groq's free daily token limit is reached, chat and eval say so plainly instead of failing with a generic error.
 - **Keep-alives.** `/api/health` is pinged by a scheduled GitHub Actions job to keep the Supabase free tier from pausing, and a second job pings Upstash Redis twice a week. GitHub disables scheduled workflows after 60 days without repository activity, so any commit re-arms them.
-- **CI.** Every push runs the 28 unit tests, ESLint, `tsc --noEmit` and a production build.
+- **CI.** Every push runs the 35 unit tests, ESLint, `tsc --noEmit` and a production build.
 - **Structured logging.** API routes log JSON including the model `finish_reason`, which is how the silent empty-answer bug was found.
 - **Dependencies.** `npm audit --omit=dev` reports 0 vulnerabilities (Oct 2026). The remaining findings are in dev-only lint tooling and do not ship.
 
@@ -144,7 +198,7 @@ Clearing browser data, or switching browser or device, starts a new empty sessio
 
 ## Database schema
 
-`supabase/schema.sql` is idempotent and recreates everything on a fresh project: the pgvector extension, tables, session columns, RLS, the generated `tsvector` column and GIN index, and the `hybrid_search_chunks` and `match_chunks` functions with a pinned `search_path`. There is deliberately no ANN index: every query is filtered to one session and the selected documents first, so an exact scan over that small set is fast and gives exact recall. pgvector is installed in the `public` schema, which is Supabase's default and the one remaining linter warning.
+`supabase/schema.sql` is idempotent and recreates everything on a fresh project: the pgvector extension, tables, session columns, RLS, the generated `tsvector` column and GIN index, the `hybrid_search_chunks` and `match_chunks` functions with a pinned `search_path`, and the service-role grants. There is deliberately no ANN index: every query is filtered to one session and the selected documents first, so an exact scan over that small set is fast and gives exact recall. pgvector is installed in the `public` schema, which is Supabase's default and the one remaining linter warning.
 
 ## Project structure
 
@@ -163,6 +217,8 @@ src/
     chunker.ts           sentence-aware chunking (+ tests)
     embeddings.ts        Cohere, asymmetric
     chunks-repository.ts RPC calls, context labelling, sources
+    prompts.ts           the one answering prompt (+ tests)
+    groq-errors.ts       per-minute vs daily limit detection (+ tests)
     evalQuestions.ts     eval question set
     validation.ts        Zod schemas (+ tests)
     ratelimit.ts         Upstash limiters, fail-open helper
@@ -197,12 +253,12 @@ UPSTASH_REDIS_REST_TOKEN=your_upstash_rest_token
 
 ```bash
 npm run dev      # http://localhost:3000
-npm test         # 28 unit tests
+npm test         # 35 unit tests
 npm run lint
 npx tsc --noEmit
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY` is server-only and must never be exposed to the browser. `NEXT_PUBLIC_SUPABASE_URL` is just the project URL, not a secret.
+`SUPABASE_SERVICE_ROLE_KEY` is server-only and must never be exposed to the browser, and it must be the **service_role** key, not the anon key. `NEXT_PUBLIC_SUPABASE_URL` is just the project URL, not a secret.
 
 ## Deployment
 
@@ -211,15 +267,16 @@ Deployed on Vercel. Set the six environment variables above in the project setti
 ## Known limitations
 
 - Aggregate questions ("list every name in the document") need more than top-5 chunk retrieval can provide.
-- The eval is small, self-graded, and uses a simpler prompt than the chat route.
+- The eval is small (8 questions, one document) and self-graded, and its scores vary by about a point between runs.
+- The free Groq tier caps usage at a daily token limit; each eval run uses a large share of it, so the demo can be unavailable until the next day.
 - Session ids are bearer tokens, not authentication, and documents are never expired.
 - PDF text extraction happens in the browser, so scanned (image-only) PDFs are not supported.
-- Free-tier rate limits on Groq make the eval slow (1 to 3 minutes).
 
 ## Roadmap
 
-- [ ] Share one answering prompt between chat and eval so the eval tests what ships
-- [ ] A non-self-graded quality check (a different model family as judge) and a larger, multi-document question set
+- [x] One answering prompt shared by chat and eval
+- [ ] A larger eval set with expected answers and a retrieval hit rate, so retrieval is measured separately from the LLM
+- [ ] A non-self-graded quality check (a different model family as judge)
 - [ ] Move the session id from the query string to a request header
 - [ ] Expire documents for abandoned sessions
 - [ ] Multi-document Q&A with per-document attribution
@@ -232,3 +289,5 @@ MIT. See [LICENSE](LICENSE).
 ## Author
 
 Ayush Singh Tomar: [GitHub](https://github.com/ayush-s-tomar) · [LinkedIn](https://linkedin.com/in/ayushsinghtomar) · [Portfolio](https://ayush-s-tomar.vercel.app)
+
+See also: SalesAgent, an autonomous B2B lead-research and outreach agent, and resume-screener-lora, a LoRA fine-tuned resume screening model.
