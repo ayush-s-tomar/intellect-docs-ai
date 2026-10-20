@@ -49,9 +49,9 @@ export const evalQuestions: EvalQuestion[] = [
   {
     // Exact-term lookup: the case pure vector search tends to miss when a
     // proper noun or specific term is not semantically "close" to its chunk.
-    question: "Does the document mention any specific names, products, or proper nouns? List them.",
+    question: "List the specific terms, acronyms, section names or exam names that the document mentions.",
     expectedKeywords: [],
-    topic: "Exact keyword match"
+    topic: "Exact term lookup"
   },
   {
     // Numeric lookup: embeddings rank numbers poorly ("42" and "43" embed
