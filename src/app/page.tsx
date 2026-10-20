@@ -31,6 +31,12 @@ type ApiResponse<T> =
   | { success: true; data: T }
   | { success: false; error: string; code: string }
 
+const EXAMPLE_QUESTIONS = [
+  'What is this document about?',
+  'Summarize the key points',
+  'What are the important dates and numbers?',
+]
+
 export default function Home() {
   const sessionId = useSessionId()
 
@@ -395,7 +401,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen bg-[#0a0a0f] text-slate-100 font-mono overflow-hidden">
+    <div className="flex h-screen bg-[#0a0a0f] text-slate-100 font-sans overflow-hidden">
 
       <div className="ambient-orb ambient-orb-1" />
       <div className="ambient-orb ambient-orb-2" />
@@ -446,9 +452,9 @@ export default function Home() {
               ✕
             </button>
           </div>
-          <p className="text-[10px] text-slate-500 mt-1 tracking-wider">RAG · Groq · Supabase</p>
+          <p className="text-[11px] text-slate-500 mt-1 tracking-wider">RAG · Groq · Supabase</p>
           <div className="flex items-center gap-1.5 mt-2">
-            <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full tracking-wider">
+            <span className="text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full tracking-wider">
               Hybrid Search
             </span>
           </div>
@@ -467,7 +473,7 @@ export default function Home() {
                   <span>Processing...</span>
                 </div>
                 {uploadProgress && (
-                  <span className="text-[9px] text-slate-600 tracking-wider normal-case">
+                  <span className="text-[11px] text-slate-400 tracking-wider normal-case">
                     {uploadProgress}
                   </span>
                 )}
@@ -488,7 +494,7 @@ export default function Home() {
           </label>
 
           {!uploading && (
-            <p className="text-[9px] text-slate-700 text-center mt-2 tracking-wider">
+            <p className="text-[11px] text-slate-500 text-center mt-2 tracking-wider">
               TXT · PDF · MD · Max 5MB
             </p>
           )}
@@ -496,13 +502,13 @@ export default function Home() {
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-widest">
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-widest">
               Documents ({documents.length})
             </p>
             {documents.length > 0 && (
               <button
                 onClick={handleClearAll}
-                className="text-[9px] uppercase tracking-wider text-slate-600 hover:text-red-400 transition-colors"
+                className="text-[11px] uppercase tracking-wider text-slate-400 hover:text-red-400 transition-colors"
               >
                 Clear All
               </button>
@@ -511,8 +517,8 @@ export default function Home() {
 
           {documents.length === 0 && (
             <div className="text-center py-8">
-              <p className="text-xs text-slate-600">No documents yet.</p>
-              <p className="text-xs text-slate-700 mt-1">Upload one to get started.</p>
+              <p className="text-xs text-slate-400">No documents yet.</p>
+              <p className="text-xs text-slate-500 mt-1">Upload one to get started.</p>
             </div>
           )}
 
@@ -543,12 +549,12 @@ export default function Home() {
                   {getFileIcon(doc.name)} {doc.name}
                 </span>
                 {doc.word_count && (
-                  <span className="text-[9px] text-slate-600 mt-0.5">
+                  <span className="text-[11px] text-slate-400 mt-0.5">
                     {doc.word_count.toLocaleString()} words · {doc.chunk_count} chunks
                   </span>
                 )}
                 {doc.summary && (
-                  <span className="text-[9px] text-slate-500 mt-1 leading-relaxed line-clamp-2">
+                  <span className="text-[11px] text-slate-500 mt-1 leading-relaxed line-clamp-2">
                     {doc.summary}
                   </span>
                 )}
@@ -556,7 +562,7 @@ export default function Home() {
 
               <button
                 onClick={e => { e.stopPropagation(); handleDeleteDocument(doc.id) }}
-                className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all text-xs leading-none"
+                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-all text-xs leading-none"
               >
                 ✕
               </button>
@@ -565,7 +571,7 @@ export default function Home() {
         </div>
 
         <div className="p-4 border-t border-slate-800/40">
-          <p className="text-[10px] text-slate-600 text-center">
+          <p className="text-[11px] text-slate-400 text-center">
             {selectedDocIds.length} of {documents.length} selected
           </p>
         </div>
@@ -585,12 +591,12 @@ export default function Home() {
             </button>
             <span className="text-xs text-slate-500 uppercase tracking-widest">Workspace</span>
             {selectedDocIds.length > 0 && (
-              <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+              <span className="text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                 {selectedDocIds.length} doc{selectedDocIds.length > 1 ? 's' : ''} active
               </span>
             )}
             {hasConversationHistory && (
-              <span className="text-[10px] bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <span className="text-[11px] bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
                 <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8-1.17 0-2.29-.2-3.31-.56L3 21l1.56-4.69C3.57 15.02 3 13.56 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
@@ -603,21 +609,17 @@ export default function Home() {
             {messages.length > 1 && (
               <button
                 onClick={handleExportChat}
-                className="text-[10px] uppercase tracking-wider text-slate-500 hover:text-emerald-400 border border-slate-800 hover:border-emerald-500/30 px-3 py-1.5 rounded-lg transition-all"
+                className="text-[11px] uppercase tracking-wider text-slate-500 hover:text-emerald-400 border border-slate-800 hover:border-emerald-500/30 px-3 py-1.5 rounded-lg transition-all"
               >
                 Export Chat
               </button>
             )}
             <Link
               href="/eval"
-              className="text-[10px] uppercase tracking-wider text-slate-600 hover:text-emerald-400 transition-colors"
+              className="text-[11px] uppercase tracking-wider text-slate-400 hover:text-emerald-400 transition-colors"
             >
               Eval
             </Link>
-            <div className="flex items-center gap-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span className="text-[10px] text-slate-500">Connected</span>
-            </div>
           </div>
         </header>
 
@@ -627,8 +629,8 @@ export default function Home() {
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-2xl w-full ${msg.role === 'user' ? 'flex justify-end' : ''}`}>
 
-                  <p className={`text-[10px] uppercase tracking-widest mb-1.5 ${
-                    msg.role === 'user' ? 'text-right text-slate-600' : 'text-slate-600'
+                  <p className={`text-[11px] uppercase tracking-widest mb-1.5 ${
+                    msg.role === 'user' ? 'text-right text-slate-400' : 'text-slate-400'
                   }`}>
                     {msg.role === 'user' ? 'You' : 'AskMyDocs'}
                   </p>
@@ -650,7 +652,7 @@ export default function Home() {
                       <div className="mt-3 flex justify-end">
                         <button
                           onClick={() => handleCopy(msg.content, i)}
-                          className="text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-lg border transition-all border-slate-700 text-slate-500 hover:text-emerald-400 hover:border-emerald-500/30"
+                          className="text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-lg border transition-all border-slate-700 text-slate-500 hover:text-emerald-400 hover:border-emerald-500/30"
                         >
                           {copiedIndex === i ? '✓ Copied!' : 'Copy'}
                         </button>
@@ -659,8 +661,8 @@ export default function Home() {
 
                     {msg.role === 'assistant' && msg.sources && msg.sources.length > 0 && (
                       <div className="mt-4 pt-4 border-t border-slate-800/60 space-y-2">
-                        <p className="text-[10px] uppercase tracking-widest text-slate-600 mb-2">
-                          Sources ({msg.sources.length} chunks · hybrid search)
+                        <p className="text-[11px] uppercase tracking-widest text-slate-400 mb-2">
+                          Sources ({msg.sources.length} chunks · hybrid search · % = cosine similarity)
                         </p>
                         {msg.sources.map((src, si) => (
                           <div key={si} className="rounded-lg border border-slate-800 overflow-hidden">
@@ -668,7 +670,7 @@ export default function Home() {
                               onClick={() => setExpandedSource(expandedSource === si + i * 100 ? null : si + i * 100)}
                               className="w-full flex items-center justify-between px-3 py-2 bg-slate-900/60 hover:bg-slate-900 transition-colors text-left"
                             >
-                              <span className="text-[10px] text-emerald-400 uppercase tracking-wider flex items-center gap-2">
+                              <span className="text-[11px] text-emerald-400 uppercase tracking-wider flex items-center gap-2">
                                 Chunk {si + 1}
                                 {src.similarity && (
                                   <span className="flex items-center gap-1.5 normal-case tracking-normal">
@@ -682,7 +684,7 @@ export default function Home() {
                                   </span>
                                 )}
                               </span>
-                              <span className="text-[10px] text-slate-600">
+                              <span className="text-[11px] text-slate-400">
                                 {expandedSource === si + i * 100 ? '▲ hide' : '▼ show'}
                               </span>
                             </button>
@@ -720,6 +722,20 @@ export default function Home() {
         </section>
 
         <footer className="p-6 border-t border-slate-800/40 flex-shrink-0">
+          {messages.length === 1 && selectedDocIds.length > 0 && (
+            <div className="max-w-3xl mx-auto mb-3 flex flex-wrap gap-2">
+              {EXAMPLE_QUESTIONS.map(q => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => setInput(q)}
+                  className="text-xs px-3 py-1.5 rounded-full border border-slate-700 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-colors"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          )}
           <form onSubmit={handleSendMessage} className="max-w-3xl mx-auto flex items-center gap-3">
             <input
               type="text"
@@ -727,7 +743,7 @@ export default function Home() {
               onChange={e => setInput(e.target.value)}
               placeholder={selectedDocIds.length === 0 ? "Select a document first..." : "Ask anything about your document..."}
               disabled={loading || selectedDocIds.length === 0}
-              className="flex-1 bg-[#0d0d14] border border-slate-800 text-slate-200 rounded-xl px-5 py-3.5 text-sm focus:outline-none focus:border-emerald-500/40 input-glow placeholder:text-slate-600 disabled:opacity-40 transition-colors"
+              className="flex-1 bg-[#0d0d14] border border-slate-800 text-slate-200 rounded-xl px-5 py-3.5 text-sm focus:outline-none focus:border-emerald-500/40 input-glow placeholder:text-slate-400 disabled:opacity-40 transition-colors"
             />
             <button
               type="submit"
@@ -737,7 +753,7 @@ export default function Home() {
               Send
             </button>
           </form>
-          <p className="text-center text-[10px] text-slate-700 mt-3 tracking-wider">
+          <p className="text-center text-[11px] text-slate-500 mt-3 tracking-wider">
             Answers grounded strictly in your uploaded documents
             {hasConversationHistory && ' · remembers recent conversation'}
           </p>

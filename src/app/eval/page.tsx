@@ -117,11 +117,11 @@ export default function EvalPage() {
   const checkColor = (check: CheckResult) => {
     if (check === 'PASS') return 'text-emerald-500'
     if (check === 'FAIL') return 'text-red-400'
-    return 'text-slate-600'
+    return 'text-slate-400'
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-slate-100 font-mono p-6">
+    <div className="min-h-screen bg-[#0a0a0f] text-slate-100 font-sans p-6">
       <div className="max-w-4xl mx-auto">
 
         <div className="mb-8">
@@ -140,7 +140,7 @@ export default function EvalPage() {
             </div>
             <Link
               href="/"
-              className="text-xs text-slate-600 hover:text-emerald-400 transition-colors"
+              className="text-xs text-slate-400 hover:text-emerald-400 transition-colors"
             >
               &larr; Back
             </Link>
@@ -152,14 +152,14 @@ export default function EvalPage() {
           <p>1. Upload a document on the <Link href="/" className="text-emerald-400 hover:underline">main page</Link></p>
           <p>2. Come back here and select it from the dropdown below</p>
           <p>3. Click Run Eval and wait 1-3 minutes (free-tier rate limits add pauses)</p>
-          <p className="mt-2 text-slate-600">
+          <p className="mt-2 text-slate-400">
             Scores are 0-10 from an LLM judge in the same model family as the answerer, so treat them as a regression signal, not an independent benchmark. Deterministic checks need no LLM. Grade A = 8+, B = 6-8, C = 4-6, D = below 4.
           </p>
         </div>
 
         <div className="flex gap-3 mb-8">
           {documents.length === 0 ? (
-            <div className="flex-1 bg-[#0d0d14] border border-slate-800 text-slate-600 rounded-xl px-4 py-3 text-sm">
+            <div className="flex-1 bg-[#0d0d14] border border-slate-800 text-slate-400 rounded-xl px-4 py-3 text-sm">
               {sessionId ? 'No documents found — upload one first' : 'Loading...'}
             </div>
           ) : (
@@ -216,28 +216,28 @@ export default function EvalPage() {
                 <p className={`text-3xl font-bold ${gradeColor(report.summary.grade)}`}>
                   {report.summary.grade}
                 </p>
-                <p className="text-[10px] text-slate-600 uppercase tracking-wider mt-1">Grade</p>
+                <p className="text-[11px] text-slate-400 uppercase tracking-wider mt-1">Grade</p>
               </div>
               <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4 text-center">
                 <p className="text-3xl font-bold text-white">
                   {report.summary.averageScore}
                   <span className="text-lg text-slate-500">/10</span>
                 </p>
-                <p className="text-[10px] text-slate-600 uppercase tracking-wider mt-1">Avg Score</p>
+                <p className="text-[11px] text-slate-400 uppercase tracking-wider mt-1">Avg Score</p>
               </div>
               <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4 text-center">
                 <p className="text-3xl font-bold text-emerald-400">
                   {report.summary.passRate}
                   <span className="text-lg text-slate-500">%</span>
                 </p>
-                <p className="text-[10px] text-slate-600 uppercase tracking-wider mt-1">Pass Rate</p>
+                <p className="text-[11px] text-slate-400 uppercase tracking-wider mt-1">Pass Rate</p>
               </div>
               <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4 text-center">
                 <p className="text-3xl font-bold text-blue-400">
                   {report.summary.passed}
                   <span className="text-lg text-slate-500">/{report.summary.scored}</span>
                 </p>
-                <p className="text-[10px] text-slate-600 uppercase tracking-wider mt-1">Passed (6+)</p>
+                <p className="text-[11px] text-slate-400 uppercase tracking-wider mt-1">Passed (6+)</p>
               </div>
             </div>
 
@@ -249,14 +249,14 @@ export default function EvalPage() {
             </p>
 
             <div className="space-y-3">
-              <p className="text-[10px] text-slate-600 uppercase tracking-widest">
+              <p className="text-[11px] text-slate-400 uppercase tracking-widest">
                 Question Results
               </p>
               {report.results.map((r, i) => (
                 <div key={i} className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4">
                   <div className="flex items-start justify-between gap-4 mb-3">
                     <div className="flex-1">
-                      <p className="text-[10px] text-slate-600 uppercase tracking-wider mb-1">
+                      <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-1">
                         {r.topic}
                       </p>
                       <p className="text-sm text-slate-300">{r.question}</p>
@@ -265,20 +265,20 @@ export default function EvalPage() {
                       <p className={`text-2xl font-bold ${scoreColor(r.score)}`}>
                         {r.score === null ? '—' : r.score}<span className="text-sm text-slate-500">/10</span>
                       </p>
-                      <p className={`text-[10px] uppercase tracking-wider ${checkColor(r.check)}`}>
+                      <p className={`text-[11px] uppercase tracking-wider ${checkColor(r.check)}`}>
                         check: {r.check.toLowerCase()}
                       </p>
                     </div>
                   </div>
 
                   <div className="bg-slate-950/60 rounded-lg p-3 mb-2">
-                    <p className="text-[10px] text-slate-600 uppercase tracking-wider mb-1">
+                    <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-1">
                       Answer
                     </p>
                     <p className="text-xs text-slate-400 leading-relaxed">{r.answer}</p>
                   </div>
 
-                  <div className="flex items-center justify-between text-[10px] text-slate-600">
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
                     <span>Judge: {r.reason}</span>
                     <span>{r.chunksRetrieved} chunks · {r.avgSimilarity}% avg match</span>
                   </div>
@@ -289,7 +289,7 @@ export default function EvalPage() {
             <div className="text-center pt-2">
               <button
                 onClick={() => { setReport(null); setDocumentId('') }}
-                className="text-xs text-slate-600 hover:text-emerald-400 transition-colors"
+                className="text-xs text-slate-400 hover:text-emerald-400 transition-colors"
               >
                 &larr; Run another eval
               </button>

@@ -13,6 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://intellect-docs-ai.vercel.app"),
   title: "AskMyDocs — AI Document Q&A",
   description: "Upload any document and ask questions about it in natural language. Answers are grounded strictly in your document, with cited sources and similarity scores.",
   openGraph: {
