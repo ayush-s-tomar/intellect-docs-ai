@@ -194,3 +194,13 @@ ALTER FUNCTION public.match_chunks(vector, int, text, bigint[])
 
 ALTER FUNCTION public.hybrid_search_chunks(text, vector, int, text, bigint[], int)
   SET search_path = public;
+-- ============================================================
+-- 9. Privileges for the server-side role
+-- ============================================================
+-- All access goes through API routes using the service-role key. RLS is on
+-- with no policies, so anon and authenticated can read nothing; service_role
+-- bypasses RLS but still needs ordinary table privileges.
+GRANT USAGE ON SCHEMA public TO service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO service_role;
