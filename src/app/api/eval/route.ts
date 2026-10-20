@@ -3,7 +3,8 @@ import Groq from 'groq-sdk'
 import { automatedEvalQuestions, type DeterministicCheck } from '@/lib/evalQuestions'
 import { evalRequestSchema, formatZodError } from '@/lib/validation'
 import { env } from '@/lib/env'
-import { apiSuccess, apiError, handleApiError } from '@/lib/api-response'
+import { apiSuccess, apiError, handleApiError, ApiHandledError } from '@/lib/api-response'
+import { isGroqDailyLimitError, DAILY_LIMIT_MESSAGE } from '@/lib/groq-errors'
 import { embedQuery } from '@/lib/embeddings'
 import { searchChunksHybrid, chunksToContext } from '@/lib/chunks-repository'
 import { evalRatelimit, safeLimit, getClientIp } from '@/lib/ratelimit'
@@ -85,6 +86,8 @@ async function withRateLimitRetry<T>(label: string, fn: () => Promise<T>): Promi
     try {
       return await fn()
     } catch (err) {
+      // The daily token cap does not recover in a minute: stop immediately with a clear message.
+      if (isGroqDailyLimitError(err)) throw new ApiHandledError('RATE_LIMITED', DAILY_LIMIT_MESSAGE)
       if (!isRateLimitError(err) || attempt > MAX_RATE_LIMIT_RETRIES) throw err
 
       const hinted = parseRetryDelayMs(err)
@@ -242,6 +245,8 @@ Score this answer:`
       reason: typeof parsed.reason === 'string' ? parsed.reason : '',
     }
   } catch (err) {
+    // A deliberate, user-facing stop (daily limit) must abort the run, not become "unscored".
+    if (err instanceof ApiHandledError) throw err
     logger.error('eval', 'Judge call failed; question left unscored', {
       error: err instanceof Error ? err.message : String(err),
       raw,

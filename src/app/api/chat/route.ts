@@ -8,6 +8,7 @@ import { apiError, handleApiError, ApiHandledError } from '@/lib/api-response'
 import { searchChunksHybrid, chunksToContext, chunksToSources } from '@/lib/chunks-repository'
 import { CHAT, RETRIEVAL } from '@/lib/config'
 import { logger } from '@/lib/logger'
+import { isGroqDailyLimitError, isGroqRateLimitError, DAILY_LIMIT_MESSAGE } from '@/lib/groq-errors'
 import { buildSystemPrompt } from '@/lib/prompts'
 
 const groq = new Groq({ apiKey: env.GROQ_API_KEY })
@@ -82,7 +83,13 @@ export async function POST(req: NextRequest) {
         messages: fullMessages,
       })
     } catch (err) {
-      throw new ApiHandledError('UPSTREAM_ERROR', `Groq request failed: ${err instanceof Error ? err.message : 'unknown error'}`)
+      // Log the detail, but never send provider error text (it can include account ids) to the browser.
+      logger.error('chat', 'Groq request failed', { error: err instanceof Error ? err.message : 'unknown error' })
+      if (isGroqDailyLimitError(err)) throw new ApiHandledError('UPSTREAM_ERROR', DAILY_LIMIT_MESSAGE)
+      if (isGroqRateLimitError(err)) {
+        throw new ApiHandledError('UPSTREAM_ERROR', 'The AI service is busy right now. Please try again in a minute.')
+      }
+      throw new ApiHandledError('UPSTREAM_ERROR', 'The AI service is unavailable right now. Please try again.')
     }
 
     const encoder = new TextEncoder()
