@@ -150,23 +150,23 @@ Open-ended questions report `n/a` rather than a fake pass.
 | 3 | One shared chat/eval prompt | 8.0 |
 | 4 | Softer refusal wording | 8.4 |
 | 5 | Exact-term question reworded | 8.9 (7 of 8 scored; 1 judge call failed and was excluded) |
+| 6 | Same code, fresh upload | 9.3 (all 8 scored) |
 
-Runs vary by about a point with no code change (runs 1 and 2), so treat the overall number as "roughly 8, between 7 and 9". The specific changes that held up are the ones that fixed a question that failed every time.
+Runs vary by about a point with no code change (runs 1 and 2), so treat the overall number as "roughly 8 to 9 on the current code, about 7 before the prompt and wording changes". The specific changes that held up are the ones that fixed a question that failed every time.
 
-**Per-question scores from run 4 (all 8 scored):**
+**Per-question scores from run 6 (all 8 scored):**
 
 | Question | Score |
 | --- | --- |
 | Main topic | 10 |
-| Summarize key points | 9 |
-| Most important details | 10 |
-| Conclusions | 9 |
-| Numbers, dates, statistics | 10 |
-| Proper nouns (old wording, see note) | 0 |
-| Specific numbers / quantities | 9 |
+| Summarize key points | 10 |
+| Most important details | 8 |
+| Conclusions | 10 |
+| Numbers, dates, statistics | 9 |
+| Exact term lookup (reworded) | 10 |
+| Specific numbers / quantities | 7 |
 | Grounding probe (should be "not found") | 10 |
-
-**Note on the exact-term question.** It originally asked for "names, products, or proper nouns". On a study guide the model answered "Not found" every time, although the judge saw acronyms like CAT, VARC and DILR in the context. That is a question-design problem, not retrieval, so it was reworded to "specific terms, acronyms, section names or exam names", and it then scored 8. The earlier 0s are reported here, not hidden.
+**Note on the exact-term question.** It originally asked for "names, products, or proper nouns". On a study guide the model answered "Not found" every time, although the judge saw acronyms like CAT, VARC and DILR in the context. That is a question-design problem, not retrieval, so it was reworded to "specific terms, acronyms, section names or exam names", and it then scored 8, then 10. The earlier 0s (old wording, runs 1 to 4) are reported here, not hidden.
 
 **How to read these numbers.** They are a self-graded regression signal, not a benchmark: the same Groq model family answers and judges, the set is 8 questions on one document, and the digit check cannot tell real quantities from section numbers. Aggregate questions ("list every name") are also a structural limit of top-5 chunk retrieval. The live `/eval` dashboard is the source of truth.
 
