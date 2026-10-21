@@ -162,7 +162,7 @@ Runs vary by about a point with no code change (runs 1 and 2), so treat the over
 | Most important details | 10 |
 | Conclusions | 9 |
 | Numbers, dates, statistics | 10 |
-| Exact term lookup (see note) | 0 |
+| Proper nouns (old wording, see note) | 0 |
 | Specific numbers / quantities | 9 |
 | Grounding probe (should be "not found") | 10 |
 

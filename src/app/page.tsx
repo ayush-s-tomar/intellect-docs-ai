@@ -327,8 +327,12 @@ export default function Home() {
       if (!res.ok || !res.body) {
         const data: ApiResponse<never> = await res.json()
         const message = !data.success ? data.error : 'Something went wrong.'
-        setMessages(prev => [...prev, { role: 'assistant', content: `❌ ${message}` }])
-        showToast(message, 'error', 4000)
+        const isDailyLimit = /daily token limit/i.test(message)
+        setMessages(prev => [
+          ...prev,
+          { role: 'assistant', content: isDailyLimit ? `⏳ Demo limit reached. ${message}` : `❌ ${message}` },
+        ])
+        showToast(message, isDailyLimit ? 'warning' : 'error', 5000)
         setLoading(false)
         return
       }
@@ -518,7 +522,7 @@ export default function Home() {
           {documents.length === 0 && (
             <div className="text-center py-8">
               <p className="text-xs text-slate-400">No documents yet.</p>
-              <p className="text-xs text-slate-500 mt-1">Upload one to get started.</p>
+              <p className="text-xs text-slate-500 mt-1">Upload a .txt, .md or .pdf to begin.</p>
             </div>
           )}
 
@@ -620,6 +624,14 @@ export default function Home() {
             >
               Eval
             </Link>
+            <a
+              href="https://github.com/ayush-s-tomar/intellect-docs-ai"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[11px] uppercase tracking-wider text-slate-400 hover:text-emerald-400 transition-colors"
+            >
+              GitHub
+            </a>
           </div>
         </header>
 
