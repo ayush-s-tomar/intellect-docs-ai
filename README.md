@@ -26,7 +26,7 @@ Every answer is generated only from your document, cites the chunks it used, and
 ## Try it in 60 seconds
 
 1. Open the **[live demo](https://intellect-docs-ai.vercel.app)**. No signup.
-2. Click **Upload Document** and choose any `.txt`, `.md` or `.pdf` (up to 5 MB).
+2. Click **Upload Document** and choose any `.txt`, `.md` or `.pdf` (up to 5 MB). No file handy? Download the [sample handbook](https://raw.githubusercontent.com/ayush-s-tomar/intellect-docs-ai/main/samples/company-handbook.txt) (right-click, save as) and upload that. Try: "How many days of paid leave do I get?" or "Who do I report a lost laptop to?"
 3. Select it in the sidebar and click an example question, or ask your own.
 4. Open the **Sources** under the answer to see the exact chunks and their cosine similarity.
 5. Optional: open `/eval` to run the built-in quality check.
@@ -166,6 +166,7 @@ Runs vary by about a point with no code change (runs 1 and 2), so treat the over
 | Exact term lookup (reworded) | 10 |
 | Specific numbers / quantities | 7 |
 | Grounding probe (should be "not found") | 10 |
+
 **Note on the exact-term question.** It originally asked for "names, products, or proper nouns". On a study guide the model answered "Not found" every time, although the judge saw acronyms like CAT, VARC and DILR in the context. That is a question-design problem, not retrieval, so it was reworded to "specific terms, acronyms, section names or exam names", and it then scored 8, then 10. The earlier 0s (old wording, runs 1 to 4) are reported here, not hidden.
 
 **How to read these numbers.** They are a self-graded regression signal, not a benchmark: the same Groq model family answers and judges, the set is 8 questions on one document, and the digit check cannot tell real quantities from section numbers. Aggregate questions ("list every name") are also a structural limit of top-5 chunk retrieval. The live `/eval` dashboard is the source of truth.
