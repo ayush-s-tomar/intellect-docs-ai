@@ -26,9 +26,9 @@ export const RATE_LIMIT = {
     MAX_REQUESTS: 20,
     WINDOW: '60 m',
   },
-  // One eval run makes 16+ Groq calls, so it is limited much harder than chat.
+  // Each call evaluates one question (2 model calls); 40 per hour is about 5 full runs.
   EVAL: {
-    MAX_REQUESTS: 5,
+    MAX_REQUESTS: 40,
     WINDOW: '60 m',
   },
 } as const

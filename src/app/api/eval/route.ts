@@ -12,9 +12,9 @@ import { RETRIEVAL, RATE_LIMIT } from '@/lib/config'
 import { logger } from '@/lib/logger'
 import { buildSystemPrompt } from '@/lib/prompts'
 
-// The eval runs every automated question as a QA call plus a judge call and
-// waits out Groq free-tier rate limits, so it can take a few minutes.
-export const maxDuration = 300
+// Each request evaluates ONE question (a QA call plus a judge call), so it
+// normally finishes in about 10 seconds even with free-tier rate-limit waits.
+export const maxDuration = 120
 
 const groq = new Groq({ apiKey: env.GROQ_API_KEY })
 
@@ -270,100 +270,69 @@ export async function POST(req: NextRequest) {
       return apiError('VALIDATION_ERROR', 'document_id must be a valid number')
     }
 
-    // One run makes 16+ Groq calls, so it is limited far harder than chat.
+    const index = Number((rawBody as { question_index?: unknown }).question_index)
+    if (!Number.isInteger(index) || index < 0 || index >= automatedEvalQuestions.length) {
+      return apiError('VALIDATION_ERROR', 'question_index is out of range')
+    }
+
+    // Every call is counted, so a client cannot skip the limit by starting mid-run.
     const { success: allowed } = await safeLimit(evalRatelimit, getClientIp(req))
     if (!allowed) {
       return apiError(
         'RATE_LIMITED',
-        `Eval limit reached. Each run makes many model calls, so it is limited to ${RATE_LIMIT.EVAL.MAX_REQUESTS} runs per hour.`
+        `Eval limit reached: ${RATE_LIMIT.EVAL.MAX_REQUESTS} question evaluations per hour (about 5 full runs). Please try again later.`
       )
     }
 
-    const results: EvalRow[] = []
-    let totalChunksRetrieved = 0
+    const evalQ = automatedEvalQuestions[index]
+    const queryEmbedding = await embedQuery(evalQ.question)
 
-    for (const evalQ of automatedEvalQuestions) {
-      const queryEmbedding = await embedQuery(evalQ.question)
-
-      const finalChunks = await searchChunksHybrid({
-        queryText: evalQ.question,
-        queryEmbedding,
-        matchCount: RETRIEVAL.MATCH_COUNT,
-        sessionId: session_id,
-        docIds: [docId],
-      })
-
-      totalChunksRetrieved += finalChunks.length
-      const context = chunksToContext(finalChunks)
-
-      const avgSimilarity = finalChunks.length > 0
-        ? Math.round(
-            finalChunks.reduce((sum, c) => sum + (c.similarity || 0), 0)
-            / finalChunks.length * 100
-          )
-        : 0
-
-      const { answer, finishReason: answerFinishReason } = await generateAnswer(
-        evalQ.question,
-        context
-      )
-
-      if (!answer) {
-        logger.error('eval', 'Still empty answer after retry', {
-          question: evalQ.question,
-          finishReason: answerFinishReason,
-          chunksRetrieved: finalChunks.length,
-        })
-      }
-
-      const { score, reason } = await scoreAnswer(
-        evalQ.question,
-        answer,
-        context,
-        evalQ.check === 'not_found'
-      )
-
-      results.push({
-        topic: evalQ.topic,
-        question: evalQ.question,
-        answer,
-        score,
-        reason,
-        avgSimilarity,
-        chunksRetrieved: finalChunks.length,
-        check: runCheck(answer, evalQ.check, evalQ.expectedKeywords),
-      })
-    }
-
-    const scored = results.filter((r): r is EvalRow & { score: number } => r.score !== null)
-    if (scored.length === 0) {
-      return apiError(
-        'UPSTREAM_ERROR',
-        'Every judge call failed (usually Groq rate limits). Wait a minute and run the eval again.'
-      )
-    }
-
-    const avgScore = Math.round((scored.reduce((sum, r) => sum + r.score, 0) / scored.length) * 10) / 10
-    const avgChunks = Math.round(totalChunksRetrieved / automatedEvalQuestions.length * 10) / 10
-    const passCount = scored.filter(r => r.score >= 6).length
-    const checked = results.filter(r => r.check !== 'N/A')
-
-    return apiSuccess({
-      summary: {
-        totalQuestions: automatedEvalQuestions.length,
-        scored: scored.length,
-        unscored: results.length - scored.length,
-        averageScore: avgScore,
-        passed: passCount,
-        failed: scored.length - passCount,
-        passRate: Math.round(passCount / scored.length * 100),
-        checksTotal: checked.length,
-        checksPassed: checked.filter(r => r.check === 'PASS').length,
-        avgChunksRetrieved: avgChunks,
-        grade: avgScore >= 8 ? 'A' : avgScore >= 6 ? 'B' : avgScore >= 4 ? 'C' : 'D',
-      },
-      results,
+    const finalChunks = await searchChunksHybrid({
+      queryText: evalQ.question,
+      queryEmbedding,
+      matchCount: RETRIEVAL.MATCH_COUNT,
+      sessionId: session_id,
+      docIds: [docId],
     })
+
+    const context = chunksToContext(finalChunks)
+
+    const avgSimilarity = finalChunks.length > 0
+      ? Math.round(
+          finalChunks.reduce((sum, c) => sum + (c.similarity || 0), 0)
+          / finalChunks.length * 100
+        )
+      : 0
+
+    const { answer, finishReason: answerFinishReason } = await generateAnswer(evalQ.question, context)
+
+    if (!answer) {
+      logger.error('eval', 'Still empty answer after retry', {
+        question: evalQ.question,
+        finishReason: answerFinishReason,
+        chunksRetrieved: finalChunks.length,
+      })
+    }
+
+    const { score, reason } = await scoreAnswer(
+      evalQ.question,
+      answer,
+      context,
+      evalQ.check === 'not_found'
+    )
+
+    const row: EvalRow = {
+      topic: evalQ.topic,
+      question: evalQ.question,
+      answer,
+      score,
+      reason,
+      avgSimilarity,
+      chunksRetrieved: finalChunks.length,
+      check: runCheck(answer, evalQ.check, evalQ.expectedKeywords),
+    }
+
+    return apiSuccess({ row, total: automatedEvalQuestions.length })
 
   } catch (err) {
     return handleApiError(err, 'eval')

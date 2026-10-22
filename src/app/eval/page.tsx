@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useSessionId } from '@/hooks/useSessionId'
 import Link from 'next/link'
-
-type CheckResult = 'PASS' | 'FAIL' | 'N/A'
+import { automatedEvalQuestions } from '@/lib/evalQuestions'
+import { summarizeEval, type CheckResult } from '@/lib/evalSummary'
 
 interface EvalResult {
   topic: string
@@ -17,27 +17,8 @@ interface EvalResult {
   check: CheckResult
 }
 
-interface EvalSummary {
-  totalQuestions: number
-  scored: number
-  unscored: number
-  averageScore: number
-  passed: number
-  failed: number
-  passRate: number
-  checksTotal: number
-  checksPassed: number
-  avgChunksRetrieved: number
-  grade: string
-}
-
-interface EvalData {
-  summary: EvalSummary
-  results: EvalResult[]
-}
-
-type EvalApiResponse =
-  | { success: true; data: EvalData }
+type QuestionApiResponse =
+  | { success: true; data: { row: EvalResult; total: number } }
   | { success: false; error: string; code: string }
 
 interface Document {
@@ -49,12 +30,15 @@ type DocumentsApiResponse =
   | { success: true; data: Document[] }
   | { success: false; error: string; code: string }
 
+const TOTAL = automatedEvalQuestions.length
+
 export default function EvalPage() {
   const sessionId = useSessionId()
   const [documentId, setDocumentId] = useState('')
   const [documents, setDocuments] = useState<Document[]>([])
-  const [loading, setLoading] = useState(false)
-  const [report, setReport] = useState<EvalData | null>(null)
+  const [running, setRunning] = useState(false)
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [results, setResults] = useState<EvalResult[]>([])
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -67,35 +51,67 @@ export default function EvalPage() {
       .catch(() => setDocuments([]))
   }, [sessionId])
 
+  const summary = useMemo(() => summarizeEval(results, TOTAL), [results])
+  const complete = results.length === TOTAL
+
+  // One question per request. A dropped connection gets one retry.
+  const fetchQuestion = async (index: number): Promise<QuestionApiResponse> => {
+    const body = JSON.stringify({
+      session_id: sessionId,
+      document_id: documentId.trim(),
+      question_index: index,
+    })
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch('/api/eval', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+        })
+        return (await res.json()) as QuestionApiResponse
+      } catch (err) {
+        if (attempt === 1) throw err
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+    }
+    throw new Error('unreachable')
+  }
+
   const runEval = async () => {
     if (!documentId.trim()) {
       setError('Please select a document first')
       return
     }
-    setLoading(true)
+    setRunning(true)
     setError('')
-    setReport(null)
+    setResults([])
+    setCurrentIndex(0)
 
+    const collected: EvalResult[] = []
     try {
-      const res = await fetch('/api/eval', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          session_id: sessionId,
-          document_id: documentId.trim(),
-        }),
-      })
-      const data: EvalApiResponse = await res.json()
-      if (!data.success) {
-        setError(data.error)
-      } else {
-        setReport(data.data)
+      for (let i = 0; i < TOTAL; i++) {
+        setCurrentIndex(i)
+        const data = await fetchQuestion(i)
+        if (!data.success) {
+          setError(
+            collected.length > 0
+              ? `${data.error} Showing the ${collected.length} question(s) completed so far.`
+              : data.error
+          )
+          break
+        }
+        collected.push(data.data.row)
+        setResults([...collected])
       }
     } catch (err) {
       console.error(err)
-      setError('Eval failed. Check console for details.')
+      setError(
+        collected.length > 0
+          ? `Connection lost. Showing the ${collected.length} question(s) completed so far.`
+          : 'Could not reach the server. Please try again.'
+      )
     } finally {
-      setLoading(false)
+      setRunning(false)
     }
   }
 
@@ -121,7 +137,7 @@ export default function EvalPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] text-slate-100 font-sans p-6">
+    <div className="min-h-screen bg-[#0a0a0f] text-slate-100 font-sans p-4 sm:p-6">
       <div className="max-w-4xl mx-auto">
 
         <div className="mb-8">
@@ -151,13 +167,13 @@ export default function EvalPage() {
           <p className="text-slate-400 font-semibold mb-1">How to use:</p>
           <p>1. Upload a document on the <Link href="/" className="text-emerald-400 hover:underline">main page</Link></p>
           <p>2. Come back here and select it from the dropdown below</p>
-          <p>3. Click Run Eval and wait 1-3 minutes (free-tier rate limits add pauses)</p>
+          <p>3. Click Run Eval. Questions run one at a time and results appear as they finish (about 1-2 minutes in total)</p>
           <p className="mt-2 text-slate-400">
             Scores are 0-10 from an LLM judge in the same model family as the answerer, so treat them as a regression signal, not an independent benchmark. Deterministic checks need no LLM. Grade A = 8+, B = 6-8, C = 4-6, D = below 4.
           </p>
         </div>
 
-        <div className="flex gap-3 mb-8">
+        <div className="flex flex-col sm:flex-row gap-3 mb-8">
           {documents.length === 0 ? (
             <div className="flex-1 bg-[#0d0d14] border border-slate-800 text-slate-400 rounded-xl px-4 py-3 text-sm">
               {sessionId ? 'No documents found — upload one first' : 'Loading...'}
@@ -165,12 +181,13 @@ export default function EvalPage() {
           ) : (
             <select
               value={documentId}
+              disabled={running}
               onChange={e => {
                 setDocumentId(e.target.value)
-                setReport(null)
+                setResults([])
                 setError('')
               }}
-              className="flex-1 bg-[#0d0d14] border border-slate-800 text-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500/40"
+              className="flex-1 min-w-0 truncate bg-[#0d0d14] border border-slate-800 text-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-emerald-500/40"
             >
               <option value="">Select a document to evaluate...</option>
               {documents.map(doc => (
@@ -182,23 +199,27 @@ export default function EvalPage() {
           )}
           <button
             onClick={runEval}
-            disabled={loading || !documentId}
+            disabled={running || !documentId}
             className="px-6 py-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-semibold uppercase tracking-wider hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
           >
-            {loading ? 'Running...' : 'Run Eval'}
+            {running ? 'Running...' : 'Run Eval'}
           </button>
         </div>
 
-        {loading && (
-          <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-6 text-center mb-6">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '0ms' }} />
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '150ms' }} />
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+        {running && (
+          <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-5 mb-6">
+            <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
+              <span>
+                Question {currentIndex + 1} of {TOTAL}: {automatedEvalQuestions[currentIndex]?.topic}
+              </span>
+              <span>{results.length} done</span>
             </div>
-            <p className="text-xs text-slate-500">
-              Running eval questions... this takes 1-3 minutes
-            </p>
+            <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-emerald-400 transition-all duration-500"
+                style={{ width: `${(results.length / TOTAL) * 100}%` }}
+              />
+            </div>
           </div>
         )}
 
@@ -208,93 +229,102 @@ export default function EvalPage() {
           </div>
         )}
 
-        {report && (
+        {summary && (
           <div className="space-y-6">
+
+            {!complete && !running && (
+              <p className="text-[11px] text-amber-500 text-center">
+                Partial result: {results.length} of {TOTAL} questions completed.
+              </p>
+            )}
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4 text-center">
-                <p className={`text-3xl font-bold ${gradeColor(report.summary.grade)}`}>
-                  {report.summary.grade}
+                <p className={`text-3xl font-bold ${gradeColor(summary.grade)}`}>
+                  {summary.grade}
                 </p>
                 <p className="text-[11px] text-slate-400 uppercase tracking-wider mt-1">Grade</p>
               </div>
               <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4 text-center">
                 <p className="text-3xl font-bold text-white">
-                  {report.summary.averageScore}
+                  {summary.averageScore}
                   <span className="text-lg text-slate-500">/10</span>
                 </p>
                 <p className="text-[11px] text-slate-400 uppercase tracking-wider mt-1">Avg Score</p>
               </div>
               <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4 text-center">
                 <p className="text-3xl font-bold text-emerald-400">
-                  {report.summary.passRate}
+                  {summary.passRate}
                   <span className="text-lg text-slate-500">%</span>
                 </p>
                 <p className="text-[11px] text-slate-400 uppercase tracking-wider mt-1">Pass Rate</p>
               </div>
               <div className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4 text-center">
                 <p className="text-3xl font-bold text-blue-400">
-                  {report.summary.passed}
-                  <span className="text-lg text-slate-500">/{report.summary.scored}</span>
+                  {summary.passed}
+                  <span className="text-lg text-slate-500">/{summary.scored}</span>
                 </p>
                 <p className="text-[11px] text-slate-400 uppercase tracking-wider mt-1">Passed (6+)</p>
               </div>
             </div>
 
             <p className="text-[11px] text-slate-500 text-center">
-              Deterministic checks: {report.summary.checksPassed}/{report.summary.checksTotal} passed
-              {report.summary.unscored > 0 && (
-                <span className="text-amber-500"> · {report.summary.unscored} question(s) unscored (judge call failed, excluded from average)</span>
+              Deterministic checks: {summary.checksPassed}/{summary.checksTotal} passed
+              {summary.unscored > 0 && (
+                <span className="text-amber-500"> · {summary.unscored} question(s) unscored (judge call failed, excluded from average)</span>
               )}
             </p>
+          </div>
+        )}
 
-            <div className="space-y-3">
-              <p className="text-[11px] text-slate-400 uppercase tracking-widest">
-                Question Results
-              </p>
-              {report.results.map((r, i) => (
-                <div key={i} className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4">
-                  <div className="flex items-start justify-between gap-4 mb-3">
-                    <div className="flex-1">
-                      <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-1">
-                        {r.topic}
-                      </p>
-                      <p className="text-sm text-slate-300">{r.question}</p>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className={`text-2xl font-bold ${scoreColor(r.score)}`}>
-                        {r.score === null ? '—' : r.score}<span className="text-sm text-slate-500">/10</span>
-                      </p>
-                      <p className={`text-[11px] uppercase tracking-wider ${checkColor(r.check)}`}>
-                        check: {r.check.toLowerCase()}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-950/60 rounded-lg p-3 mb-2">
+        {results.length > 0 && (
+          <div className="space-y-3 mt-6">
+            <p className="text-[11px] text-slate-400 uppercase tracking-widest">
+              Question Results
+            </p>
+            {results.map((r, i) => (
+              <div key={i} className="bg-[#0d0d14] border border-slate-800 rounded-xl p-4">
+                <div className="flex items-start justify-between gap-4 mb-3">
+                  <div className="flex-1">
                     <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-1">
-                      Answer
+                      {r.topic}
                     </p>
-                    <p className="text-xs text-slate-400 leading-relaxed">{r.answer}</p>
+                    <p className="text-sm text-slate-300">{r.question}</p>
                   </div>
-
-                  <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Judge: {r.reason}</span>
-                    <span>{r.chunksRetrieved} chunks · {r.avgSimilarity}% avg match</span>
+                  <div className="text-right flex-shrink-0">
+                    <p className={`text-2xl font-bold ${scoreColor(r.score)}`}>
+                      {r.score === null ? '—' : r.score}<span className="text-sm text-slate-500">/10</span>
+                    </p>
+                    <p className={`text-[11px] uppercase tracking-wider ${checkColor(r.check)}`}>
+                      check: {r.check.toLowerCase()}
+                    </p>
                   </div>
                 </div>
-              ))}
-            </div>
 
-            <div className="text-center pt-2">
-              <button
-                onClick={() => { setReport(null); setDocumentId('') }}
-                className="text-xs text-slate-400 hover:text-emerald-400 transition-colors"
-              >
-                &larr; Run another eval
-              </button>
-            </div>
+                <div className="bg-slate-950/60 rounded-lg p-3 mb-2">
+                  <p className="text-[11px] text-slate-400 uppercase tracking-wider mb-1">
+                    Answer
+                  </p>
+                  <p className="text-xs text-slate-400 leading-relaxed whitespace-pre-wrap">{r.answer}</p>
+                </div>
 
+                <div className="flex items-center justify-between gap-3 text-[11px] text-slate-400">
+                  <span>Judge: {r.reason}</span>
+                  <span className="flex-shrink-0">{r.chunksRetrieved} chunks · {r.avgSimilarity}% avg match</span>
+                </div>
+              </div>
+            ))}
+
+            {!running && (
+              <div className="text-center pt-2">
+                <button
+                  onClick={() => { setResults([]); setDocumentId(''); setError('') }}
+                  className="text-xs text-slate-400 hover:text-emerald-400 transition-colors"
+                >
+                  &larr; Run another eval
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
