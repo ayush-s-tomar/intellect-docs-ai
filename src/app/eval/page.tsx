@@ -173,6 +173,10 @@ export default function EvalPage() {
           </p>
         </div>
 
+        <p className="text-xs text-slate-400 mb-4">
+          Also available: the <Link href="/eval/retrieval" className="text-emerald-400 hover:underline">retrieval check</Link> (no LLM, no Groq tokens).
+        </p>
+
         <div className="flex flex-col sm:flex-row gap-3 mb-8">
           {documents.length === 0 ? (
             <div className="flex-1 bg-[#0d0d14] border border-slate-800 text-slate-400 rounded-xl px-4 py-3 text-sm">
