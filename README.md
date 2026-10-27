@@ -29,7 +29,7 @@ Every answer is generated only from your document, cites the chunks it used, and
 2. Click **Upload Document** and choose any `.txt`, `.md` or `.pdf` (up to 5 MB). No file handy? Download the [sample handbook](https://raw.githubusercontent.com/ayush-s-tomar/intellect-docs-ai/main/samples/company-handbook.txt) (right-click, save as) and upload that. Try: "How many days of paid leave do I get?" or "Who do I report a lost laptop to?"
 3. Select it in the sidebar and click an example question, or ask your own.
 4. Open the **Sources** under the answer to see the exact chunks and their cosine similarity.
-5. Optional: open `/eval` to run the built-in quality check.
+5. Optional: open `/eval` to run the built-in quality check. Questions run one at a time with live progress. The **retrieval check** on the same page needs no LLM, so it works even when the AI provider is rate-limited.
 
 > The demo runs on free tiers. If the AI provider's daily token limit has been reached, the app says so and recovers the next day.
 
@@ -41,7 +41,7 @@ Every answer is generated only from your document, cites the chunks it used, and
 | **Retrieval** | Hybrid: pgvector cosine + Postgres full-text, fused with Reciprocal Rank Fusion |
 | **Answering** | Groq `openai/gpt-oss-20b`, streamed, citing `(Chunk N)` |
 | **Quality** | Built-in eval: LLM judge plus deterministic checks, reported honestly |
-| **Engineering** | 35 unit tests, CI on every push, input validation, RLS, rate limiting, clean production audit |
+| **Engineering** | 45 unit tests, CI on every push, input validation, RLS, rate limiting, clean production audit |
 | **Isolation** | Anonymous, session-scoped, no signup |
 
 ## Contents
@@ -134,7 +134,7 @@ flowchart LR
 
 ## RAG quality evaluation
 
-`/eval` runs 8 automated questions against one selected document. An LLM judge scores each answer 0 to 10, and deterministic checks run without any LLM:
+`/eval` runs 8 automated questions against one selected document, one request per question, so a dropped connection loses one question and not the whole run. An LLM judge scores each answer 0 to 10, and deterministic checks run without any LLM:
 
 - `contains_number`: the answer must contain a digit
 - `not_found`: for a deliberate grounding probe whose correct answer is "not found"
@@ -177,12 +177,12 @@ Runs vary by about a point with no code change (runs 1 and 2), so treat the over
 | --- | --- |
 | Chat | 30 requests/minute per IP |
 | Upload | 20 uploads/hour per IP |
-| Eval | 5 runs/hour per IP (one run makes 16+ model calls) |
+| Eval | 40 question evaluations/hour per IP (about 5 full runs; one question = 2 model calls) |
 
 - **Fail open.** If Redis is unreachable, the limiter logs and allows the request.
 - **Daily provider cap.** When Groq's free daily token limit is reached, chat and eval say so plainly instead of failing with a generic error.
 - **Keep-alives.** `/api/health` is pinged by a scheduled GitHub Actions job to keep the Supabase free tier from pausing, and a second job pings Upstash Redis twice a week. GitHub disables scheduled workflows after 60 days without repository activity, so any commit re-arms them.
-- **CI.** Every push runs the 35 unit tests, ESLint, `tsc --noEmit` and a production build.
+- **CI.** Every push runs the 45 unit tests, ESLint, `tsc --noEmit` and a production build.
 - **Structured logging.** API routes log JSON including the model `finish_reason`, which is how the silent empty-answer bug was found.
 - **Dependencies.** `npm audit --omit=dev` reports 0 vulnerabilities (Oct 2026). The remaining findings are in dev-only lint tooling and do not ship.
 
@@ -211,7 +211,8 @@ Clearing browser data, or switching browser or device, starts a new empty sessio
 src/
   app/
     page.tsx             main UI
-    eval/page.tsx        eval dashboard
+    eval/page.tsx        eval dashboard (one question per request)
+    eval/retrieval/page.tsx  LLM-free retrieval check
     api/{chat,upload,documents,eval,health}/route.ts
   hooks/useSessionId.ts
   lib/
@@ -221,6 +222,8 @@ src/
     prompts.ts           the one answering prompt (+ tests)
     groq-errors.ts       per-minute vs daily limit detection (+ tests)
     evalQuestions.ts     eval question set
+    evalSummary.ts       eval grading maths (+ tests)
+    retrievalEval.ts     retrieval hit-rate cases and maths (+ tests)
     validation.ts        Zod schemas (+ tests)
     ratelimit.ts         Upstash limiters, fail-open helper
     supabase-admin.ts    server-only service-role client
@@ -254,7 +257,7 @@ UPSTASH_REDIS_REST_TOKEN=your_upstash_rest_token
 
 ```bash
 npm run dev      # http://localhost:3000
-npm test         # 35 unit tests
+npm test         # 45 unit tests
 npm run lint
 npx tsc --noEmit
 ```
@@ -276,7 +279,8 @@ Deployed on Vercel. Set the six environment variables above in the project setti
 ## Roadmap
 
 - [x] One answering prompt shared by chat and eval
-- [ ] A larger eval set with expected answers and a retrieval hit rate, so retrieval is measured separately from the LLM
+- [x] A retrieval check with known facts (hit@k, MRR), measured separately from the LLM
+- [ ] A larger eval set with expected answers for the LLM-graded questions
 - [ ] A non-self-graded quality check (a different model family as judge)
 - [ ] Move the session id from the query string to a request header
 - [ ] Expire documents for abandoned sessions
