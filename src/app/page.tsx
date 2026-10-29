@@ -78,7 +78,7 @@ export default function Home() {
 
   const fetchDocuments = useCallback(async () => {
     try {
-      const res = await fetch(`/api/documents?session_id=${sessionId}`)
+      const res = await fetch('/api/documents', { headers: { 'x-session-id': sessionId } })
       const data: ApiResponse<Document[]> = await res.json()
       if (data.success) {
         setDocuments(data.data)
@@ -205,9 +205,9 @@ export default function Home() {
 
     const results = await Promise.allSettled(
       documents.map(async doc => {
-        const res = await fetch(`/api/documents?session_id=${sessionId}`, {
+        const res = await fetch('/api/documents', {
           method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-session-id': sessionId },
           body: JSON.stringify({ id: doc.id }),
         })
         const data: ApiResponse<{ deleted: boolean }> = await res.json()
@@ -233,9 +233,9 @@ export default function Home() {
 
   const handleDeleteDocument = async (id: string) => {
     try {
-      const res = await fetch(`/api/documents?session_id=${sessionId}`, {
+      const res = await fetch('/api/documents', {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-session-id': sessionId },
         body: JSON.stringify({ id }),
       })
       const data: ApiResponse<{ deleted: boolean }> = await res.json()

@@ -43,7 +43,7 @@ export default function EvalPage() {
 
   useEffect(() => {
     if (!sessionId) return
-    fetch(`/api/documents?session_id=${sessionId}`)
+    fetch('/api/documents', { headers: { 'x-session-id': sessionId } })
       .then(r => r.json())
       .then((res: DocumentsApiResponse) => {
         setDocuments(res.success ? res.data : [])

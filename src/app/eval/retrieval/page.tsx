@@ -27,7 +27,7 @@ export default function RetrievalEvalPage() {
 
   useEffect(() => {
     if (!sessionId) return
-    fetch(`/api/documents?session_id=${sessionId}`)
+    fetch('/api/documents', { headers: { 'x-session-id': sessionId } })
       .then(r => r.json())
       .then((res: DocsResponse) => setDocs(res.success ? res.data : []))
       .catch(() => setDocs([]))

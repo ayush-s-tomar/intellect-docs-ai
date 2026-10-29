@@ -6,7 +6,7 @@ import { logger } from '@/lib/logger'
 
 export async function GET(req: NextRequest) {
   try {
-    const sessionId = req.nextUrl.searchParams.get('session_id')
+    const sessionId = req.headers.get('x-session-id')
 
     const parseResult = documentsQuerySchema.safeParse({ session_id: sessionId })
     if (!parseResult.success) {
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
-    const sessionId = req.nextUrl.searchParams.get('session_id')
+    const sessionId = req.headers.get('x-session-id')
     const rawBody = await req.json()
 
     const sessionResult = documentsQuerySchema.safeParse({ session_id: sessionId })

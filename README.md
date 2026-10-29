@@ -190,12 +190,12 @@ Runs vary by about a point with no code change (runs 1 and 2), so treat the over
 
 On first visit the browser generates a `crypto.randomUUID()` and stores it in `localStorage`. Every upload, fetch, delete and search is scoped server-side by that id, so one visitor never sees another's documents.
 
-This is a deliberate lightweight-auth tradeoff, with two consequences worth stating:
+This is a deliberate lightweight-auth tradeoff, with consequences worth stating:
 
 - **The session id is a bearer token.** Anyone holding it can read and delete that session's documents. It is a random UUID, but it is not real authentication.
-- **It travels in the URL** for `GET` and `DELETE /api/documents`, so it can appear in server logs.
+- **It is sent in an `x-session-id` header**, not the URL, so it does not appear in access logs or browser history. It still lives in `localStorage`, so it is exposed to any script running on the page.
 
-Clearing browser data, or switching browser or device, starts a new empty session. Moving the id to a request header, and adding optional accounts, are on the roadmap.
+Clearing browser data, or switching browser or device, starts a new empty session. Optional accounts are on the roadmap.
 
 ## Database schema
 
@@ -282,7 +282,7 @@ Deployed on Vercel. Set the six environment variables above in the project setti
 - [x] A retrieval check with known facts (hit@k, MRR), measured separately from the LLM
 - [ ] A larger eval set with expected answers for the LLM-graded questions
 - [ ] A non-self-graded quality check (a different model family as judge)
-- [ ] Move the session id from the query string to a request header
+- [x] Session id moved from the query string to a request header
 - [ ] Expire documents for abandoned sessions
 - [ ] Multi-document Q&A with per-document attribution
 - [ ] Optional accounts so documents persist across devices
