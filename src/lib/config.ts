@@ -32,3 +32,8 @@ export const RATE_LIMIT = {
     WINDOW: '60 m',
   },
 } as const
+
+export const RETENTION = {
+  // Documents older than this are deleted by the daily cleanup job.
+  DAYS: 14,
+} as const

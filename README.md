@@ -179,6 +179,7 @@ Runs vary by about a point with no code change (runs 1 and 2), so treat the over
 | Upload | 20 uploads/hour per IP |
 | Eval | 40 question evaluations/hour per IP (about 5 full runs; one question = 2 model calls) |
 
+- **Data retention.** A daily Vercel cron (`/api/cron/cleanup`, protected by a secret, fails closed) deletes documents older than 14 days together with their chunks.
 - **Fail open.** If Redis is unreachable, the limiter logs and allows the request.
 - **Daily provider cap.** When Groq's free daily token limit is reached, chat and eval say so plainly instead of failing with a generic error.
 - **Keep-alives.** `/api/health` is pinged by a scheduled GitHub Actions job to keep the Supabase free tier from pausing, and a second job pings Upstash Redis twice a week. GitHub disables scheduled workflows after 60 days without repository activity, so any commit re-arms them.
@@ -273,7 +274,7 @@ Deployed on Vercel. Set the six environment variables above in the project setti
 - Aggregate questions ("list every name in the document") need more than top-5 chunk retrieval can provide.
 - The eval is small (8 questions, one document) and self-graded, and its scores vary by about a point between runs.
 - The free Groq tier caps usage at a daily token limit; each eval run uses a large share of it, so the demo can be unavailable until the next day.
-- Session ids are bearer tokens, not authentication, and documents are never expired.
+- Session ids are bearer tokens, not authentication. Documents are deleted automatically after 14 days.
 - PDF text extraction happens in the browser, so scanned (image-only) PDFs are not supported.
 
 ## Roadmap
@@ -283,7 +284,7 @@ Deployed on Vercel. Set the six environment variables above in the project setti
 - [ ] A larger eval set with expected answers for the LLM-graded questions
 - [ ] A non-self-graded quality check (a different model family as judge)
 - [x] Session id moved from the query string to a request header
-- [ ] Expire documents for abandoned sessions
+- [x] Expire documents after 14 days (daily cron)
 - [ ] Multi-document Q&A with per-document attribution
 - [ ] Optional accounts so documents persist across devices
 
