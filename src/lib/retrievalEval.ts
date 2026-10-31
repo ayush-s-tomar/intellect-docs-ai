@@ -63,3 +63,9 @@ export function summarizeRetrieval(ranks: (number | null)[]): RetrievalSummary {
     mrr: Math.round(mrr * 100) / 100,
   }
 }
+
+// 1-based rank of the first chunk containing the fact, or null for a miss.
+export function rankOfFact(chunks: { content: string }[], fact: string): number | null {
+  const idx = chunks.findIndex(c => containsFact(c.content, fact))
+  return idx === -1 ? null : idx + 1
+}

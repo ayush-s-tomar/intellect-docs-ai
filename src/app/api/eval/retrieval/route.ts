@@ -2,12 +2,13 @@ import { NextRequest } from 'next/server'
 import { evalRequestSchema, formatZodError } from '@/lib/validation'
 import { apiSuccess, apiError, handleApiError } from '@/lib/api-response'
 import { embedQuery } from '@/lib/embeddings'
-import { searchChunksHybrid } from '@/lib/chunks-repository'
+import { searchChunksHybrid, searchChunksVectorOnly } from '@/lib/chunks-repository'
 import { evalRatelimit, safeLimit, getClientIp } from '@/lib/ratelimit'
 import { RETRIEVAL } from '@/lib/config'
-import { HANDBOOK_CASES, containsFact, summarizeRetrieval } from '@/lib/retrievalEval'
+import { HANDBOOK_CASES, rankOfFact, summarizeRetrieval } from '@/lib/retrievalEval'
 
 // Uses only Cohere and Supabase, no LLM, so it costs no Groq tokens.
+// Each question is run through hybrid search and through vector-only search.
 export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
@@ -30,22 +31,33 @@ export async function POST(req: NextRequest) {
       return apiError('RATE_LIMITED', 'Eval limit reached. Please try again later.')
     }
 
-    const items: { question: string; fact: string; rank: number | null }[] = []
+    const items: { question: string; fact: string; hybridRank: number | null; vectorRank: number | null }[] = []
 
     for (const c of HANDBOOK_CASES) {
       const queryEmbedding = await embedQuery(c.question)
-      const chunks = await searchChunksHybrid({
-        queryText: c.question,
+      const params = {
         queryEmbedding,
         matchCount: RETRIEVAL.MATCH_COUNT,
         sessionId: session_id,
         docIds: [docId],
+      }
+      const [hybrid, vector] = await Promise.all([
+        searchChunksHybrid({ ...params, queryText: c.question }),
+        searchChunksVectorOnly(params),
+      ])
+      items.push({
+        question: c.question,
+        fact: c.fact,
+        hybridRank: rankOfFact(hybrid, c.fact),
+        vectorRank: rankOfFact(vector, c.fact),
       })
-      const idx = chunks.findIndex(ch => containsFact(ch.content, c.fact))
-      items.push({ question: c.question, fact: c.fact, rank: idx === -1 ? null : idx + 1 })
     }
 
-    return apiSuccess({ summary: summarizeRetrieval(items.map(i => i.rank)), items })
+    return apiSuccess({
+      hybrid: summarizeRetrieval(items.map(i => i.hybridRank)),
+      vector: summarizeRetrieval(items.map(i => i.vectorRank)),
+      items,
+    })
   } catch (err) {
     return handleApiError(err, 'eval.retrieval')
   }

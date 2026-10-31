@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { containsFact, summarizeRetrieval, HANDBOOK_CASES } from './retrievalEval'
+import { containsFact, summarizeRetrieval, rankOfFact, HANDBOOK_CASES } from './retrievalEval'
 
 describe('containsFact', () => {
   it('ignores case and extra whitespace', () => {
@@ -33,5 +33,17 @@ describe('summarizeRetrieval', () => {
     const facts = HANDBOOK_CASES.map(c => c.fact)
     expect(new Set(facts).size).toBe(facts.length)
     expect(facts.every(f => f.length > 0)).toBe(true)
+  })
+})
+
+describe('rankOfFact', () => {
+  const chunks = [{ content: 'Core hours are 10:00 to 16:00.' }, { content: 'Staff get 25 days of paid leave.' }]
+
+  it('returns the 1-based rank of the first matching chunk', () => {
+    expect(rankOfFact(chunks, '25 days of paid leave')).toBe(2)
+  })
+
+  it('returns null on a miss', () => {
+    expect(rankOfFact(chunks, 'Vaultline')).toBeNull()
   })
 })
