@@ -1,0 +1,31 @@
+HARBOR LANE STUDIO: EMPLOYEE HANDBOOK (SAMPLE DOCUMENT)
+
+This is a fictional handbook written for demonstrating AskMyDocs. Every name, date and number below is invented.
+
+1. About the company
+
+Harbor Lane Studio is a design and software agency founded on 14 March 2016 by Maya Okafor and Daniel Reyes. The studio has 42 employees across three offices: Lisbon, Toronto and Pune. Its largest client is Brightwave Energy, which accounts for about 31 percent of annual revenue.
+
+2. Working hours and leave
+
+Core hours are 10:00 to 16:00 local time. Full-time employees receive 25 days of paid leave per year, plus 10 public holidays. Unused leave, up to 5 days, carries over into the next year and expires on 31 March. Sick leave is unlimited with a doctor's note after 3 consecutive days. Parental leave is 20 weeks fully paid for every parent.
+
+3. Remote work
+
+Employees may work remotely up to 3 days per week. Everyone must attend the in-person planning day on the first Monday of each month. A one-time home office allowance of 800 euros is paid within 60 days of joining.
+
+4. Expenses and travel
+
+Flights over 4 hours may be booked in premium economy. Hotel stays are capped at 180 euros per night, or 220 euros in New York and London. Receipts must be submitted within 30 days. Meals on client trips are reimbursed up to 55 euros per day.
+
+5. Security rules
+
+All laptops use full-disk encryption. Passwords must be at least 14 characters, and the password manager Vaultline is mandatory. Lost devices must be reported to the security lead, Priya Nair, within 2 hours. Client data may never be stored on personal devices.
+
+6. Performance reviews
+
+Reviews happen twice a year, in May and November. Salary changes take effect on 1 July. Promotions require a written case from the manager and approval by a panel of 3 senior staff. The annual learning budget is 1,200 euros per person, and 2 conference days are included.
+
+7. Contacts
+
+People team: people@harborlane.example. IT help desk: help@harborlane.example. Security incidents: security@harborlane.example. The office manager in Lisbon is Tomas Ferreira.

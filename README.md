@@ -26,7 +26,7 @@ Every answer is generated only from your document, cites the chunks it used, and
 ## Try it in 60 seconds
 
 1. Open the **[live demo](https://intellect-docs-ai.vercel.app)**. No signup.
-2. Click **Upload Document** and choose any `.txt`, `.md` or `.pdf` (up to 5 MB). No file handy? Download the [sample handbook](https://raw.githubusercontent.com/ayush-s-tomar/intellect-docs-ai/main/samples/company-handbook.txt) (right-click, save as) and upload that. Try: "How many days of paid leave do I get?" or "Who do I report a lost laptop to?"
+2. Click **Upload Document** and choose any `.txt`, `.md` or `.pdf` (up to 5 MB). No file handy? Click **Try the sample** in the sidebar to load a fictional company handbook in one click. Try: "How many days of paid leave do I get?" or "Who do I report a lost laptop to?"
 3. Select it in the sidebar and click an example question, or ask your own.
 4. Open the **Sources** under the answer to see the exact chunks and their cosine similarity.
 5. Optional: open `/eval` to run the built-in quality check. Questions run one at a time with live progress. The **retrieval check** on the same page needs no LLM, so it works even when the AI provider is rate-limited.
@@ -58,7 +58,7 @@ Most "chat with your PDF" demos either hallucinate past the source or hide why a
 - Streaming answers rendered as markdown, with `(Chunk N)` citations
 - Source cards for every answer, with real cosine similarity
 - Multi-turn follow-ups (the last 6 messages resolve references such as "it")
-- Example-question chips, chat export, document delete, and an eval dashboard at `/eval`
+- One-click sample document, example-question chips, chat export, document delete, and an eval dashboard at `/eval`
 - Anonymous, session-scoped isolation with no signup
 
 ## Tech stack

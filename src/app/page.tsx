@@ -37,6 +37,12 @@ const EXAMPLE_QUESTIONS = [
   'What are the important dates and numbers?',
 ]
 
+const HANDBOOK_QUESTIONS = [
+  'How many days of paid leave do I get?',
+  'Who do I report a lost laptop to?',
+  'What is the hotel cap in London?',
+]
+
 export default function Home() {
   const sessionId = useSessionId()
 
@@ -61,6 +67,12 @@ export default function Home() {
 
   const hasConversationHistory = messages.filter(m => m.role === 'user').length >= 1
     && messages.filter(m => m.role === 'assistant').length >= 2
+
+  const exampleQuestions = documents.some(
+    d => selectedDocIds.includes(d.id) && /handbook/i.test(d.name)
+  )
+    ? HANDBOOK_QUESTIONS
+    : EXAMPLE_QUESTIONS
 
   const showToast = (message: string, type: Toast['type'] = 'success', duration = 3000) => {
     const id = toastId.current++
@@ -197,6 +209,48 @@ export default function Home() {
       setUploading(false)
       setUploadProgress('')
       e.target.value = ''
+    }
+  }
+
+  const handleTrySample = async () => {
+    if (uploading || !sessionId) return
+    setUploading(true)
+    setUploadProgress('Loading sample handbook...')
+
+    try {
+      const sampleRes = await fetch('/samples/company-handbook.txt')
+      if (!sampleRes.ok) throw new Error('Sample file not found')
+      const blob = await sampleRes.blob()
+      const file = new File([blob], 'company-handbook.txt', { type: 'text/plain' })
+
+      setUploadProgress('Uploading...')
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('session_id', sessionId)
+
+      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      const data: ApiResponse<{ document: Document; chunksCreated: number; wordCount: number; summary: string }> = await res.json()
+
+      if (data.success) {
+        await fetchDocuments()
+        setSelectedDocIds(prev => [...prev, String(data.data.document.id)])
+        setDocuments(prev => prev.map(d =>
+          d.id === String(data.data.document.id)
+            ? { ...d, word_count: data.data.wordCount, chunk_count: data.data.chunksCreated, summary: data.data.summary }
+            : d
+        ))
+        showToast(`✓ Sample handbook loaded: ${data.data.chunksCreated} chunks indexed. Try a question below.`, 'success', 4000)
+      } else if (data.code === 'RATE_LIMITED') {
+        showToast(`Upload limit reached. Max ${RATE_LIMIT.UPLOAD.MAX_REQUESTS} uploads per hour.`, 'warning', 5000)
+      } else {
+        showToast('Could not load the sample: ' + data.error, 'error', 5000)
+      }
+    } catch (err) {
+      console.error(err)
+      showToast('Could not load the sample. Please try again.', 'error', 5000)
+    } finally {
+      setUploading(false)
+      setUploadProgress('')
     }
   }
 
@@ -502,6 +556,16 @@ export default function Home() {
               TXT · PDF · MD · Max 5MB
             </p>
           )}
+
+          {!uploading && documents.length === 0 && (
+            <button
+              type="button"
+              onClick={handleTrySample}
+              className="w-full mt-3 py-2 px-4 rounded-lg text-xs font-semibold tracking-wider uppercase border border-slate-700 text-slate-300 hover:text-emerald-400 hover:border-emerald-500/30 transition-colors"
+            >
+              Try the sample
+            </button>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -736,7 +800,7 @@ export default function Home() {
         <footer className="p-6 border-t border-slate-800/40 flex-shrink-0">
           {messages.length === 1 && selectedDocIds.length > 0 && (
             <div className="max-w-3xl mx-auto mb-3 flex flex-wrap gap-2">
-              {EXAMPLE_QUESTIONS.map(q => (
+              {exampleQuestions.map(q => (
                 <button
                   key={q}
                   type="button"
