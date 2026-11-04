@@ -630,7 +630,8 @@ export default function Home() {
 
               <button
                 onClick={e => { e.stopPropagation(); handleDeleteDocument(doc.id) }}
-                className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-all text-xs leading-none"
+                aria-label="Delete document"
+                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-slate-400 hover:text-red-400 transition-all text-xs leading-none"
               >
                 ✕
               </button>
@@ -647,24 +648,25 @@ export default function Home() {
 
       <main className="flex-1 flex flex-col h-full overflow-hidden relative z-10">
 
-        <header className="h-14 border-b border-slate-800/40 bg-[#0a0a0f]/80 backdrop-blur flex items-center justify-between px-6 flex-shrink-0">
+        <header className="h-14 border-b border-slate-800/40 bg-[#0a0a0f]/80 backdrop-blur flex items-center justify-between px-3 sm:px-6 flex-shrink-0">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
+              aria-label="Open documents sidebar"
               className="md:hidden text-slate-500 hover:text-white transition-colors mr-1"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <span className="text-xs text-slate-500 uppercase tracking-widest">Workspace</span>
+            <span className="hidden sm:inline text-xs text-slate-500 uppercase tracking-widest">Workspace</span>
             {selectedDocIds.length > 0 && (
-              <span className="text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+              <span className="hidden sm:inline text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                 {selectedDocIds.length} doc{selectedDocIds.length > 1 ? 's' : ''} active
               </span>
             )}
             {hasConversationHistory && (
-              <span className="text-[11px] bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <span className="hidden sm:flex text-[11px] bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 rounded-full items-center gap-1">
                 <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8-1.17 0-2.29-.2-3.31-.56L3 21l1.56-4.69C3.57 15.02 3 13.56 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
@@ -673,7 +675,7 @@ export default function Home() {
             )}
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             {messages.length > 1 && (
               <button
                 onClick={handleExportChat}
@@ -699,7 +701,7 @@ export default function Home() {
           </div>
         </header>
 
-        <section className="flex-1 overflow-y-auto px-6 py-6">
+        <section className="flex-1 overflow-y-auto px-3 sm:px-6 py-6">
           <div className="max-w-3xl mx-auto space-y-6">
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -797,7 +799,7 @@ export default function Home() {
           </div>
         </section>
 
-        <footer className="p-6 border-t border-slate-800/40 flex-shrink-0">
+        <footer className="p-3 sm:p-6 border-t border-slate-800/40 flex-shrink-0">
           {messages.length === 1 && selectedDocIds.length > 0 && (
             <div className="max-w-3xl mx-auto mb-3 flex flex-wrap gap-2">
               {exampleQuestions.map(q => (
